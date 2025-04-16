@@ -1,0 +1,5 @@
+/Users/mindaewon/realtime-avatar-ai/tts_service/build/CMakeFiles/generate_proto_code.dir
+/Users/mindaewon/realtime-avatar-ai/tts_service/build/CMakeFiles/tts_service.dir
+/Users/mindaewon/realtime-avatar-ai/tts_service/build/CMakeFiles/grpc_tests.dir
+/Users/mindaewon/realtime-avatar-ai/tts_service/build/CMakeFiles/edit_cache.dir
+/Users/mindaewon/realtime-avatar-ai/tts_service/build/CMakeFiles/rebuild_cache.dir
