@@ -1,0 +1,17 @@
+
+syntax = "proto3";
+
+package protos;
+
+service ASRService {
+  rpc Transcribe (AudioRequest) returns (TranscriptionResponse);
+}
+
+message AudioRequest {
+  bytes audio_data = 1;
+  string format = 2;
+}
+
+message TranscriptionResponse {
+  string text = 1;
+}

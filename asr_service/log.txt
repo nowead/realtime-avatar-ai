@@ -1,0 +1,110 @@
+PYTHONPATH=/Users/mindaewon/realtime-avatar-ai/asr_service pytest --import-mode=importlib tests/
+============================= test session starts ==============================
+platform darwin -- Python 3.11.8, pytest-8.1.1, pluggy-1.5.0
+rootdir: /Users/mindaewon/realtime-avatar-ai/asr_service
+plugins: anyio-4.9.0, asyncio-0.23.6
+asyncio: mode=Mode.STRICT
+collected 3 items
+
+tests/test_audio_utils.py .                                              [ 33%]
+tests/test_grpc_asr.py F                                                 [ 66%]
+tests/test_whisper_runner.py F                                           [100%]
+
+=================================== FAILURES ===================================
+_____________________________ test_grpc_transcribe _____________________________
+
+    def test_grpc_transcribe():
+        with open("samples/test.wav", "rb") as f:
+            audio_bytes = f.read()
+    
+        channel = grpc.insecure_channel("localhost:50051")
+        stub = asr_pb2_grpc.ASRServiceStub(channel)
+    
+        request = asr_pb2.AudioRequest(audio_data=audio_bytes, format="wav")
+>       response = stub.Transcribe(request)
+
+tests/test_grpc_asr.py:14: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+venv/lib/python3.11/site-packages/grpc/_channel.py:1176: in __call__
+    return _end_unary_response_blocking(state, call, False, None)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = <grpc._channel._RPCState object at 0x106a5d450>
+call = <grpc._cython.cygrpc.SegregatedCall object at 0x1062f77c0>
+with_call = False, deadline = None
+
+    def _end_unary_response_blocking(
+        state: _RPCState,
+        call: cygrpc.SegregatedCall,
+        with_call: bool,
+        deadline: Optional[float],
+    ) -> Union[ResponseType, Tuple[ResponseType, grpc.Call]]:
+        if state.code is grpc.StatusCode.OK:
+            if with_call:
+                rendezvous = _MultiThreadedRendezvous(state, call, None, deadline)
+                return state.response, rendezvous
+            else:
+                return state.response
+        else:
+>           raise _InactiveRpcError(state)  # pytype: disable=not-instantiable
+E           grpc._channel._InactiveRpcError: <_InactiveRpcError of RPC that terminated with:
+E           	status = StatusCode.INTERNAL
+E           	details = "Whisper transcription failed."
+E           	debug_error_string = "UNKNOWN:Error received from peer ipv6:%5B::1%5D:50051 {created_time:"2025-04-11T15:48:26.158423+09:00", grpc_status:13, grpc_message:"Whisper transcription failed."}"
+E           >
+
+venv/lib/python3.11/site-packages/grpc/_channel.py:1005: _InactiveRpcError
+_______________________________ test_run_whisper _______________________________
+
+    def test_run_whisper():
+        # whisper.cpp는 test.wav에 대해 transcribe한 결과 텍스트를 생성
+        sample_wav = "samples/test.wav"
+>       text = run_whisper(sample_wav)
+
+tests/test_whisper_runner.py:8: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+audio_path = '/Users/mindaewon/realtime-avatar-ai/asr_service/samples/test.wav'
+model_path = '/Users/mindaewon/realtime-avatar-ai/asr_service/models/ggml-tiny.bin'
+
+    def run_whisper(audio_path: str, model_path: str = "models/ggml-tiny.bin") -> str:
+        whisper_bin = os.path.abspath("whisper.cpp/build/bin/whisper-cli")
+        model_path = os.path.abspath(model_path)
+        audio_path = os.path.abspath(audio_path)
+    
+        result = subprocess.run(
+            [
+                whisper_bin,
+                "-m", model_path,
+                "-f", audio_path,
+                "-otxt",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    
+        print("=== whisper stdout ===")
+        print(result.stdout)
+        print("=== whisper stderr ===")
+        print(result.stderr)
+    
+        txt_path = audio_path + ".txt"
+        if not os.path.exists(txt_path):
+>           raise RuntimeError("Whisper transcription failed.")
+E           RuntimeError: Whisper transcription failed.
+
+app/whisper_runner.py:29: RuntimeError
+----------------------------- Captured stdout call -----------------------------
+=== whisper stdout ===
+
+=== whisper stderr ===
+whisper_init_from_file_with_params_no_state: loading model from '/Users/mindaewon/realtime-avatar-ai/asr_service/models/ggml-tiny.bin'
+whisper_init_from_file_with_params_no_state: failed to open '/Users/mindaewon/realtime-avatar-ai/asr_service/models/ggml-tiny.bin'
+error: failed to initialize whisper context
+
+=========================== short test summary info ============================
+FAILED tests/test_grpc_asr.py::test_grpc_transcribe - grpc._channel._Inactive...
+FAILED tests/test_whisper_runner.py::test_run_whisper - RuntimeError: Whisper...
+========================= 2 failed, 1 passed in 0.18s ==========================
+make: *** [test] Error 1
