@@ -1,11 +1,15 @@
+VENV_NAME = .venv
+PYTHON = $(VENV_NAME)/bin/python
+PIP = $(VENV_NAME)/bin/pip
+
 # Python 가상환경 설치 및 의존성
 install:
-	pip install --upgrade pip
-	pip install -r requirements-dev.txt
+	$(PIP) install --upgrade pip
+	$(PIP) install -r requirements-dev.txt
 
 # FastAPI 앱 실행 (개발용)
 run:
-	uvicorn app.main:app --reload
+	$(PYTHON) -m uvicorn app.main:app --reload
 
 # 테스트 실행
 test:
@@ -13,7 +17,7 @@ test:
 
 # 포맷 정리 (원하면 black이나 ruff도 추가 가능)
 format:
-	black app tests
+	$(PYTHON) -m black app tests
 
 # Docker 이미지 빌드
 build:
