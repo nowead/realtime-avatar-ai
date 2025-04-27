@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package avatar;
+
+message Viseme {
+  float timestamp_ms = 1;
+  string viseme_id = 2;
+}
+
+message SyncRequest {
+  bytes audio_data = 1;
+  string format = 2;          // 예: "pcm", "wav"
+  repeated Viseme visemes = 3;
+  string session_id = 4;      // 클라이언트 세션 식별자
+}
+
+message SyncResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+service AvatarSync {
+  rpc SyncAvatar(SyncRequest) returns (SyncResponse);
+}

@@ -1,0 +1,17 @@
+{
+    "compilerOptions": {
+      "target": "ES2016",            // 타겟 JavaScript 버전
+      "module": "ESNext",            // 모듈 시스템
+      "moduleResolution": "node",    // 모듈 해석 방식
+      "outDir": "./dist",            // 컴파일 결과 출력 디렉토리
+      "rootDir": "./src",            // 소스 코드 루트 디렉토리
+      "strict": true,                // 엄격한 타입 검사 활성화
+      "esModuleInterop": true,       // ES 모듈 상호 운용성 활성화
+      "skipLibCheck": true,          // 라이브러리 타입 검사 건너뛰기
+      "forceConsistentCasingInFileNames": true, // 파일 이름 대소문자 일관성 강제
+      "sourceMap": true,             // 소스맵 생성
+      "lib": ["dom", "es2016"]       // 사용할 라이브러리 (DOM API 포함)
+    },
+    "include": ["src/**/*"],         // 컴파일 대상 포함
+    "exclude": ["node_modules"]      // 컴파일 대상 제외
+  }
