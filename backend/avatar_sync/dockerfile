@@ -1,0 +1,48 @@
+# backend/avatar_sync/Dockerfile
+
+# 스테이지 1: 빌드 스테이지
+FROM ubuntu:22.04 AS builder
+
+# 빌드 의존성 설치 (CMake, C++ 컴파일러, uWebSockets 의존성: libuv, zlib, openssl 등)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake git \
+    libuv1-dev zlib1g-dev libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# 소스 코드 및 빌드 파일 복사
+COPY src ./src
+COPY include ./include
+COPY vendor ./vendor   # uWebSockets 또는 다른 라이브러리가 vendor에 있다면
+COPY CMakeLists.txt .
+
+# C++ 애플리케이션 설정 및 빌드
+# 필요에 따라 CMake 옵션 조정
+# vendor/에서 uWebSockets를 빌드/설치하거나 다운로드해야 할 수 있음
+RUN cmake .
+RUN make -j$(nproc)
+
+# ---
+
+# 스테이지 2: 런타임 스테이지
+FROM ubuntu:22.04
+
+WORKDIR /app
+
+# 런타임 의존성 설치 (uWebSockets 공유 라이브러리 등)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libuv1 libssl3 zlib1g \
+    && rm -rf /var/lib/apt/lists/*
+
+# 빌더 스테이지에서 컴파일된 실행 파일 복사
+COPY --from=builder /build/avatar_sync_executable ./ # 실행 파일 이름/경로 조정
+
+# 환경 변수 설정
+ENV PORT=5004
+
+# WebSocket 포트 노출
+EXPOSE $PORT
+
+# 실행 파일 실행 명령어
+CMD ["./avatar_sync_executable"]

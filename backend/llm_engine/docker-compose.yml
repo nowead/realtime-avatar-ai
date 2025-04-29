@@ -1,0 +1,47 @@
+services:
+  llm-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: llm-engine
+    working_dir: /app # Dockerfile의 WORKDIR이 /app 라고 가정 (명시적으로 추가)
+    env_file:
+      - .env
+    environment:
+      # /app/src 에 있는 코드에서 /app/generated 등을 쉽게 import 하기 위해 /app을 경로에 추가
+      - PYTHONPATH=/app:/app/src:/app/generated 
+    ports:
+      - "50051:50051"
+    volumes:
+      # 호스트의 ./app 폴더를 컨테이너의 /app/src 폴더로 마운트 (파이썬 소스코드 위치)
+      - ./src:/app/src 
+      # 호스트의 ./protos 폴더를 컨테이너의 /app/protos 폴더로 마운트
+      - ./protos:/app/protos
+      - ./saved_sessions:/app/saved_sessions # 호스트의 ./saved_sessions 폴더를 컨테이너의 /app/saved_sessions 폴더로 마운트
+      # 호스트의 ./generated 폴더를 컨테이너의 /app/generated 폴더로 마운트 
+      # (호스트에서 컴파일하거나, 빈 폴더를 마운트하여 컨테이너 실행 시 생성된 파일 공유)
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=localhost:50051"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    # command: ["python", "src/llm_server.py"] # 필요시 시작 명령어 경로 수정 (예시)
+
+  test-client:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: test-client
+    working_dir: /app # Dockerfile의 WORKDIR이 /app 라고 가정 (명시적으로 추가)
+    environment:
+      # 테스트 코드에서도 /app 아래 모듈들을 찾을 수 있도록 경로 추가
+      - PYTHONPATH=/app:/app/src:/app/generated 
+    volumes:
+      # 테스트 실행에 필요한 소스, 프로토, 생성된 코드, 테스트 코드 마운트
+      - ./src:/app/src
+      - ./protos:/app/protos
+      - ./tests:/app/tests # 호스트의 ./tests 폴더를 컨테이너의 /app/tests 폴더로 마운트
+    depends_on:
+      llm-engine:
+        condition: service_healthy
+    # command: ["pytest", "tests/"] # 필요시 테스트 실행 명령어 경로 수정 (예시)

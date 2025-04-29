@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package llm;
+
+service LLMService {
+  rpc ChatStream (stream ChatRequest) returns (stream ChatResponse);
+}
+
+message ChatRequest {
+  string session_id = 1;
+  string user_text = 2;
+}
+
+message ChatResponse {
+  string assistant_text = 1;
+  bool is_final = 2;
+}

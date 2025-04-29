@@ -1,0 +1,36 @@
+# frontend/Dockerfile
+
+# 스테이지 1: 프론트엔드 애플리케이션 빌드
+FROM node:18-alpine AS builder
+WORKDIR /app
+
+# package 파일 복사 및 의존성 설치
+COPY package.json yarn.lock* package-lock.json* ./
+RUN npm install
+
+# 나머지 프론트엔드 코드 복사
+COPY . .
+
+# 컴파일된 Wasm 파일 복사 (build.sh가 여기에 파일을 둔다고 가정)
+# Wasm 빌드가 분리되어 있다면, 프론트엔드 빌드 전에 파일이 존재해야 함
+COPY public/wasm ./public/wasm
+
+# 애플리케이션 빌드 (필요시 명령어 수정)
+RUN npm run build
+
+# 스테이지 2: Nginx로 정적 파일 서빙
+FROM nginx:stable-alpine
+WORKDIR /usr/share/nginx/html
+
+# 기본 Nginx 환영 페이지 제거
+RUN rm -rf ./*
+
+# 빌더 스테이지에서 빌드된 파일 복사
+COPY --from=builder /app/dist .
+# 빌드 결과물이 다른 디렉토리(예: 'build')에 있다면 '/app/dist'를 수정
+
+# 80번 포트 노출 (Nginx 기본값)
+EXPOSE 80
+
+# Nginx 시작
+CMD ["nginx", "-g", "daemon off;"]

@@ -1,0 +1,173 @@
+# ==================================================================
+# 단계별 빌드 및 테스트 가이드:
+# 1. 아래 서비스 목록에서 테스트하려는 서비스의 주석(#)을 제거합니다.
+# 2. 터미널에서 'make build service=<서비스명>' 명령어로 이미지를 빌드합니다.
+# 3. 빌드가 성공하면 'make up service=<서비스명>'으로 컨테이너를 실행합니다.
+# 4. 'make logs service=<서비스명>'으로 로그를 확인하여 정상 동작하는지 확인합니다.
+# 5. 문제가 없다면 다음 서비스의 주석을 제거하고 2-4단계를 반복합니다.
+# 6. API 게이트웨이는 다른 백엔드 서비스들이 실행된 후에 테스트하는 것이 좋습니다.
+# 7. 프론트엔드는 API 게이트웨이가 실행된 후에 테스트하는 것이 좋습니다.
+# ==================================================================
+
+services:
+  # --- 백엔드 서비스 (빌드/테스트 추천 순서) ---
+
+  # 1. NLU 서비스 (자리표시자 - 먼저 구현 필요)
+  #    - 비교적 간단한 서비스일 수 있으므로 시작점으로 좋습니다.
+  # nlu-service: # <--- 첫 번째 서비스: 주석 해제됨
+  #   build: ./backend/nlu-service
+  #   environment:
+  #     - PORT=8002
+  #     # - Add other necessary env vars from .env if needed
+  #   networks:
+  #     - app-network
+  #   restart: unless-stopped
+
+  # 2. LLM 서비스
+  #    - 자체 모델 또는 외부 API를 사용하며 다른 내부 서비스 의존성이 적을 수 있습니다.
+  llm-service:
+      build:
+        # 빌드 컨텍스트: 이 docker-compose.yml 파일이 있는 위치를 기준으로
+        # ./llm-engine 디렉토리를 빌드 컨텍스트로 사용합니다.
+        context: ./llm-engine
+        # 사용할 Dockerfile 이름 (지정한 context 디렉토리 내의 파일)
+        dockerfile: Dockerfile
+      # 컨테이너 이름 설정
+      container_name: llm-service
+      # 컨테이너 내부 작업 디렉토리 설정
+      working_dir: /app
+      # .env 파일 로드:
+      # 이 docker-compose.yml 파일과 같은 디렉토리에 있는 .env 파일을 로드합니다.
+      # 만약 .env 파일이 ./llm-engine/ 디렉토리 내부에 있다면,
+      # 경로를 './llm-engine/.env' 와 같이 수정해야 합니다.
+      env_file:
+        - .env
+      # 환경 변수 설정:
+      environment:
+        # 컨테이너 내 파이썬 경로 설정
+        - PYTHONPATH=/app:/app/src:/app/generated
+      # 포트 매핑:
+      # 호스트의 50051 포트를 컨테이너의 50051 포트로 연결
+      ports:
+        - "50051:50051"
+      # 볼륨 마운트 설정:
+      # 호스트 경로가 이제 ./llm-engine/ 하위 경로를 가리키도록 수정되었습니다.
+      # (docker-compose.yml 파일 위치 기준 상대 경로)
+      volumes:
+        # 파이썬 소스 코드 마운트
+        - ./llm-engine/src:/app/src
+        # Protobuf 정의 파일 마운트
+        - ./llm-engine/protos:/app/protos
+        # 저장된 세션 데이터 마운트
+        - ./llm-engine/saved_sessions:/app/saved_sessions
+        # 생성된 코드 마운트
+        - ./llm-engine/generated:/app/generated
+      # 상태 검사 설정:
+      healthcheck:
+        test: ["CMD", "grpc_health_probe", "-addr=localhost:50051"]
+        interval: 5s
+        timeout: 3s
+        retries: 5
+      # 재시작 정책 추가
+      restart: unless-stopped
+      # 필요시 서비스 시작 명령어 지정
+      # command: ["python", "src/llm_server.py"]
+
+  # 3. TTS 서비스 (C++)
+  #    - 외부 SDK(Azure) 의존성이 있지만 다른 내부 서비스 의존성은 적습니다.
+#  tts-service: # <--- 주석 처리됨
+#    build: ./backend/tts_service
+#    environment:
+#      - PORT=5002
+#      - AZURE_SPEECH_KEY=${AZURE_SPEECH_KEY} # .env 파일 필요
+#      - AZURE_SPEECH_REGION=${AZURE_SPEECH_REGION} # .env 파일 필요
+#      # - NVIDIA_VISIBLE_DEVICES=all # GPU 사용 시
+#    networks:
+#      - app-network
+#    restart: unless-stopped
+    # deploy: ... # GPU 설정 (필요시)
+
+  # 4. ASR 서비스 (Python/gRPC/whisper.cpp)
+  #    - 모델 및 whisper.cpp 빌드/연동이 필요할 수 있습니다.
+#  asr-service: # <--- 주석 처리됨
+#    build: ./backend/asr-service
+#    environment:
+#      - PORT=50051 # gRPC 포트
+#      - MODEL_DIR=/models
+#      - NVIDIA_VISIBLE_DEVICES=all # GPU 사용 시
+#    volumes:
+#      - ./backend/asr-service/models:/models:ro # 모델 마운트
+#    networks:
+#      - app-network
+#    restart: unless-stopped
+#    deploy: # GPU 할당
+#      resources:
+#        reservations:
+#          devices:
+#            - driver: nvidia
+#              count: 1
+#              capabilities: [gpu]
+
+  # 5. Avatar Sync 서비스 (C++)
+  #    - WebSocket 기반이며 다른 내부 서비스 의존성은 적습니다.
+#  avatar-sync: # <--- 주석 처리됨
+#    build: ./backend/avatar_sync
+#    environment:
+#      - PORT=5004 # WebSocket 포트
+#    networks:
+#      - app-network
+#    restart: unless-stopped
+
+  # --- API 게이트웨이 (다른 백엔드 서비스 실행 후 테스트) ---
+  # 6. API 게이트웨이 (자리표시자 - 먼저 구현 필요)
+  #    - 다른 백엔드 서비스들의 URL을 참조합니다.
+#  api-gateway: # <--- 주석 처리됨
+#    build: ./backend/api-gateway
+#    ports:
+#      - "8000:8000" # 외부 노출 포트
+#    environment:
+#      - PORT=8000
+#      - ASR_SERVICE_URL=http://asr-service:50051
+#      - NLU_SERVICE_URL=http://nlu-service:8002
+#      - LLM_SERVICE_URL=http://llm-service:8001
+#      - TTS_SERVICE_URL=http://tts-service:5002
+#      - AVATAR_SYNC_URL=ws://avatar-sync:5004
+#      # .env 파일에서 키 로드
+#      - AZURE_SPEECH_KEY=${AZURE_SPEECH_KEY}
+#      - AZURE_SPEECH_REGION=${AZURE_SPEECH_REGION}
+#      - OPENAI_API_KEY=${OPENAI_API_KEY}
+#    networks:
+#      - app-network
+#    restart: unless-stopped
+#    depends_on: # 시작 순서 제어 (선택 사항)
+#      - asr-service
+#      - nlu-service
+#      - llm-service
+#      - tts-service
+#      - avatar-sync
+
+  # --- 프론트엔드 (API 게이트웨이 실행 후 테스트) ---
+  # 7. 프론트엔드
+  #    - API 게이트웨이 주소를 참조합니다.
+#  frontend: # <--- 주석 처리됨
+#    build: ./frontend
+#    ports:
+#      - "8080:80" # 호스트 8080 -> 컨테이너 Nginx 80
+#    environment:
+#      # Nginx 환경에서는 이 방식 대신 Nginx 설정을 통해 API 주소를 주입하거나,
+#      # 빌드 시점에 환경 변수를 JS 파일에 포함시키는 방법 사용 필요
+#      # - REACT_APP_API_URL=http://localhost:8000 # 개발 시 참고용
+#      # Nginx 설정 파일을 수정하여 API 요청을 API 게이트웨이로 프록시할 수 있습니다.
+#    networks:
+#      - app-network
+#    restart: unless-stopped
+#    # depends_on:
+#    #   - api-gateway
+
+networks:
+  app-network:
+    driver: bridge
+
+# volumes: # 필요시 명명된 볼륨 정의
+#   models_asr:
+#   models_llm:
