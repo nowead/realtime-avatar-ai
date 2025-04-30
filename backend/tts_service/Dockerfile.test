@@ -1,0 +1,67 @@
+# 빌드 환경 설정 (g++, grpc, protobuf 포함)
+FROM ubuntu:22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 필수 패키지 설치
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    pkg-config \
+    # gRPC 및 Protobuf 의존성
+    libprotobuf-dev \
+    protobuf-compiler \
+    libgrpc++-dev \
+    protobuf-compiler-grpc \
+    git \
+    # apt 캐시 정리
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# proto 파일 복사 (실제 경로에 맞게 수정 필요)
+COPY ./proto ./proto
+
+# 테스트 코드 복사
+COPY ./tests ./tests
+
+# gRPC 코드 생성 (proto 파일로부터)
+# 출력 디렉토리를 테스트 코드의 include 경로에 맞게 설정
+RUN mkdir -p tests/generated && \
+    protoc --grpc_out=tests/generated --cpp_out=tests/generated -I proto proto/tts.proto --plugin=protoc-gen-grpc=`which grpc_cpp_plugin`
+
+# 테스트 클라이언트 컴파일
+# 생성된 gRPC 코드와 함께 컴파일하고 gRPC/Protobuf 라이브러리 링크
+RUN g++ \
+    -std=c++17 \
+    -I tests/generated \
+    tests/test_tts_service.cpp \
+    tests/generated/tts.pb.cc \
+    tests/generated/tts.grpc.pb.cc \
+    -o /app/test_client \
+    `pkg-config --libs --cflags protobuf grpc++` \
+    -pthread
+
+# --- 최종 스테이지 ---
+# 실제 테스트 실행을 위한 최소 환경
+FROM ubuntu:22.04
+
+# 런타임 의존성 설치 (테스트 실행에 필요한 최소 라이브러리)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    libprotobuf-lite23 \
+    libgrpc++1 \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# 빌더 스테이지에서 컴파일된 테스트 클라이언트 실행 파일 복사
+COPY --from=builder /app/test_client .
+
+# 컨테이너 시작 시 테스트 클라이언트 실행
+# 서버 주소는 docker-compose에서 정의된 서비스 이름 'tts-service' 사용 가정
+CMD ["./test_client"]
+# 만약 테스트 클라이언트가 주소를 인자로 받는다면 아래처럼 수정:
+# ENTRYPOINT ["./test_client"]
+# CMD ["tts-service:50055"]

@@ -1,90 +1,75 @@
-# 📦 프로젝트 설정
-PROJECT_NAME := tts_service
-BUILD_DIR := build
-EXECUTABLE := $(BUILD_DIR)/$(PROJECT_NAME)
-TEST_EXEC := $(BUILD_DIR)/grpc_tests
+# --- 변수 정의 ---
+COMPOSE       = docker compose
+COMPOSE_FILE ?= docker-compose.yml
+SERVICE      ?=
 
-SRC_DIR := src
-PROTO_DIR := proto
-PROTO_FILE := $(PROTO_DIR)/tts.proto
-GEN_DIR := $(BUILD_DIR)/generated
-TEST_DIR := tests
+# --- 빌드 ---
+all: build
 
-SPEECHSDK_ROOT := /Users/mindaewon/speechsdk
-FRAMEWORK_PATH := $(SPEECHSDK_ROOT)/MicrosoftCognitiveServicesSpeech.xcframework/macos-arm64_x86_64
-FRAMEWORK := MicrosoftCognitiveServicesSpeech
+# 모든 서비스 빌드
+build: build-tts build-test
+	@echo "--- ✅ 모든 서비스 빌드 완료 ---"
 
-# ✅ gRPC plugin
-PROTOC := protoc
-GRPC_CPP_PLUGIN := /opt/homebrew/bin/grpc_cpp_plugin
+# tts-service만 빌드
+build-tts:
+	@echo "--- 🔨 TTS 서비스 빌드 ---"
+	$(COMPOSE) -f $(COMPOSE_FILE) build tts-service
+	@echo "--- ✅ TTS 빌드 완료 ---"
 
-# ✅ GTest 수동 설정 (pkg-config 지원되지 않음)
-GTEST_DIR := /opt/homebrew/opt/googletest
+# test-client만 빌드
+build-test:
+	@echo "--- 🔨 테스트 클라이언트 빌드 ---"
+	$(COMPOSE) -f $(COMPOSE_FILE) build --no-cache test-client
+	@echo "--- ✅ 테스트 클라이언트 빌드 완료 ---"
 
-# 🔧 include & link 설정
-INCLUDES := -I$(SRC_DIR) -I$(GEN_DIR) \
-            -I$(FRAMEWORK_PATH)/$(FRAMEWORK).framework/Headers \
-            -I$(GTEST_DIR)/include \
-            -I/opt/homebrew/include -I/opt/homebrew/include/grpcpp
+# --- 실행/중지 ---
 
-PKG_CFLAGS := $(shell pkg-config --cflags protobuf grpc++)
-PKG_LDFLAGS := $(shell pkg-config --libs protobuf grpc++)
+up:
+	@echo "--- 🚀 서비스 시작 중 ---"
+	$(COMPOSE) -f $(COMPOSE_FILE) up -d --remove-orphans
+	@echo "--- ✅ 서비스 시작 완료 ---"
 
-CXX := clang++
-CXXFLAGS := -std=c++17 -Wall $(INCLUDES) $(PKG_CFLAGS) -F$(FRAMEWORK_PATH)
-LDFLAGS := $(PKG_LDFLAGS) -framework $(FRAMEWORK) \
-           -L$(GTEST_DIR)/lib -lgtest -lgtest_main -lpthread
-# 자동 생성 파일
-GEN_SRCS := $(GEN_DIR)/tts.pb.cc $(GEN_DIR)/tts.grpc.pb.cc
-GEN_HDRS := $(GEN_DIR)/tts.pb.h $(GEN_DIR)/tts.grpc.pb.h
+restart:
+	@echo "--- 🔁 서비스 재시작 ---"
+	$(COMPOSE) -f $(COMPOSE_FILE) restart $(SERVICE)
+	@echo "--- ✅ 재시작 완료 ---"
 
-# 전체 소스
-SRC_FILES := $(SRC_DIR)/main.cpp $(SRC_DIR)/azure_tts_client.cpp $(SRC_DIR)/tts_service.cpp $(GEN_SRCS)
-TEST_FILES := $(TEST_DIR)/test_tts_service.cpp $(SRC_DIR)/azure_tts_client.cpp $(SRC_DIR)/tts_service.cpp $(GEN_SRCS)
+stop:
+	@echo "--- ⛔ 서비스 중지 ---"
+	$(COMPOSE) -f $(COMPOSE_FILE) stop $(SERVICE)
+	@echo "--- ✅ 중지 완료 ---"
 
-# 🧱 기본 빌드
-all: $(EXECUTABLE)
+# --- 완전 삭제 ---
 
-# 🏗 gRPC 코드 생성
-$(GEN_SRCS) $(GEN_HDRS): $(PROTO_FILE)
-	@mkdir -p $(GEN_DIR)
-	$(PROTOC) --proto_path=$(PROTO_DIR) \
-		--cpp_out=$(GEN_DIR) \
-		--grpc_out=$(GEN_DIR) \
-		--plugin=protoc-gen-grpc=$(GRPC_CPP_PLUGIN) \
-		$(PROTO_FILE)
+down:
+	@echo "--- 💣 모든 Docker Compose 리소스 삭제 중 ---"
+	$(COMPOSE) -f $(COMPOSE_FILE) down --volumes --remove-orphans --rmi all
+	docker system prune -af --volumes --filter "label=stage=tts-service" --filter "label=stage=test-client" || true
+	@echo "--- 🧹 이미지/볼륨/캐시 정리 완료 ---"
 
-# 🛠 메인 타겟 빌드
-$(EXECUTABLE): $(SRC_FILES) $(GEN_HDRS)
-	@mkdir -p $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) $(SRC_FILES) -o $@ $(LDFLAGS)
+# --- 테스트 ---
 
-# 🧪 테스트 타겟 빌드
-$(TEST_EXEC): $(TEST_FILES) $(GEN_SRCS) $(GEN_HDRS)
-	@mkdir -p $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) $(TEST_FILES) -o $@ $(LDFLAGS)
+test:
+	$(MAKE) build-test
+	$(MAKE) up
+	$(COMPOSE) run --rm test-client
+	$(MAKE) down
 
-# ▶️ 실행
-run: $(EXECUTABLE)
-	@echo "🚀 [run] 실행 중..."
-	@env DYLD_FRAMEWORK_PATH=$(FRAMEWORK_PATH) $(EXECUTABLE)
+# --- 상태 확인 ---
+ps:
+	$(COMPOSE) -f $(COMPOSE_FILE) ps
 
-# 🧪 테스트 실행
-test: $(TEST_EXEC)
-	@echo "🧪 [test] 단위 테스트 실행 중..."
-	@DYLD_FRAMEWORK_PATH=$(FRAMEWORK_PATH) $(TEST_EXEC)
+logs:
+	$(COMPOSE) -f $(COMPOSE_FILE) logs -f $(SERVICE)
 
-# 🧼 코드 포맷
-format:
-	@echo "🧼 [format] clang-format 실행 중..."
-	clang-format -i $(shell find $(SRC_DIR) $(TEST_DIR) -name '*.cpp' -or -name '*.h')
+# --- 전체 시스템 정리 ---
+prune:
+	@echo "--- 🧨 전체 Docker 시스템 정리 ---"
+	@read -p "⚠️ 사용하지 않는 모든 Docker 리소스가 삭제됩니다. 계속할까요? (y/N) " c; \
+	if [ "$$c" = "y" ] || [ "$$c" = "Y" ]; then \
+		docker system prune -af --volumes; \
+	else \
+		echo "⛔ 취소됨"; \
+	fi
 
-# 🧹 클린
-clean:
-	@echo "🧹 [clean] 빌드 디렉토리 삭제"
-	rm -rf $(BUILD_DIR)
-
-# ♻️ 전체 재빌드
-re: clean all
-
-.PHONY: all clean re run test format
+.PHONY: all build build-tts build-test up restart stop down test ps logs prune

@@ -37,7 +37,7 @@ void loadDotEnv(const std::string& path = ".env") {
 }
 
 int main() {
-    loadDotEnv();
+    // loadDotEnv();
 
     const char* key    = std::getenv("AZURE_SPEECH_KEY");
     const char* region = std::getenv("AZURE_SPEECH_REGION");

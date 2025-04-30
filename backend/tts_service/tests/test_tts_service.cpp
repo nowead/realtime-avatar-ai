@@ -61,7 +61,7 @@ private:
 
 int main() {
     TTSClient client(
-      grpc::CreateChannel("localhost:50055",
+      grpc::CreateChannel("tts-service:50055",
                           grpc::InsecureChannelCredentials())
     );
     return client.SynthesizeToFile(

@@ -4,7 +4,6 @@ import openai # 최신 버전(v1.0 이상)이 설치되어 있다고 가정
 import os
 import time
 from concurrent import futures
-from dotenv import load_dotenv
 
 # --- Health Checking 관련 Import ---
 from grpc_health.v1 import health_pb2, health_pb2_grpc
@@ -19,9 +18,6 @@ from generated.llm_pb2_grpc import LLMServiceServicer, add_LLMServiceServicer_to
 from openai import AsyncOpenAI
 import httpx # httpx 임포트 추가
 # --- ---
-
-# OpenAI 설정
-load_dotenv()
 
 # ✅ 세션별 대화 히스토리 및 마지막 사용 시간 관리
 session_histories = {}

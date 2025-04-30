@@ -1,0 +1,52 @@
+services:
+  # TTS 서비스 컨테이너 정의
+  tts-service:
+    env_file:
+      - .env
+    build:
+      context: . # Dockerfile이 있는 현재 디렉토리
+      dockerfile: Dockerfile # 서비스용 Dockerfile 이름
+    container_name: tts-service # 컨테이너 이름
+    environment:
+      # .env 파일 또는 환경 변수로부터 Azure 자격 증명 가져오기
+      AZURE_SPEECH_KEY: ${AZURE_SPEECH_KEY}
+      AZURE_SPEECH_REGION: ${AZURE_SPEECH_REGION}
+      SSL_CERT_DIR: /etc/ssl/certs
+    ports:
+      # 호스트와 컨테이너 포트 매핑 (외부 테스트용)
+      - "50055:50055"
+    dns:
+      # DNS 설정 (Google DNS 사용)
+      - 8.8.8.8
+    volumes:
+      - ./src:/app/src
+    networks:
+      # 사용할 네트워크 지정
+      - tts-net
+    healthcheck:
+      test: ["CMD", "bash", "-c", "</dev/tcp/localhost/50055"]
+      interval: 2s
+      timeout: 1s
+      retries: 5
+
+  # 테스트 클라이언트 컨테이너 정의
+  test-client:
+    build:
+      context: . # Dockerfile.test가 있는 현재 디렉토리
+      dockerfile: Dockerfile.test # 테스트 클라이언트용 Dockerfile 이름
+    container_name: test-client
+    depends_on:
+      # tts-service가 시작된 후에 test-client 시작
+      tts-service:
+        condition: service_healthy
+    volumes:
+      - ./tests:/app/tests
+    networks:
+      # tts-service와 동일한 네트워크 사용
+      - tts-net
+    # 이 서비스는 시작 시 CMD (Dockerfile.test에 정의됨)를 실행하고 종료됨
+
+networks:
+  # 컨테이너 간 통신을 위한 사용자 정의 네트워크 정의
+  tts-net:
+    driver: bridge

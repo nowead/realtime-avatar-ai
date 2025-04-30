@@ -25,53 +25,52 @@ services:
 
   # 2. LLM 서비스
   #    - 자체 모델 또는 외부 API를 사용하며 다른 내부 서비스 의존성이 적을 수 있습니다.
+  services:
   llm-service:
-      build:
-        # 빌드 컨텍스트: 이 docker-compose.yml 파일이 있는 위치를 기준으로
-        # ./llm-engine 디렉토리를 빌드 컨텍스트로 사용합니다.
-        context: ./llm-engine
-        # 사용할 Dockerfile 이름 (지정한 context 디렉토리 내의 파일)
-        dockerfile: Dockerfile
-      # 컨테이너 이름 설정
-      container_name: llm-service
-      # 컨테이너 내부 작업 디렉토리 설정
-      working_dir: /app
-      # .env 파일 로드:
-      # 이 docker-compose.yml 파일과 같은 디렉토리에 있는 .env 파일을 로드합니다.
-      # 만약 .env 파일이 ./llm-engine/ 디렉토리 내부에 있다면,
-      # 경로를 './llm-engine/.env' 와 같이 수정해야 합니다.
-      env_file:
-        - .env
-      # 환경 변수 설정:
-      environment:
-        # 컨테이너 내 파이썬 경로 설정
-        - PYTHONPATH=/app:/app/src:/app/generated
-      # 포트 매핑:
-      # 호스트의 50051 포트를 컨테이너의 50051 포트로 연결
-      ports:
-        - "50051:50051"
-      # 볼륨 마운트 설정:
-      # 호스트 경로가 이제 ./llm-engine/ 하위 경로를 가리키도록 수정되었습니다.
-      # (docker-compose.yml 파일 위치 기준 상대 경로)
-      volumes:
-        # 파이썬 소스 코드 마운트
-        - ./llm-engine/src:/app/src
-        # Protobuf 정의 파일 마운트
-        - ./llm-engine/protos:/app/protos
-        # 저장된 세션 데이터 마운트
-        - ./llm-engine/saved_sessions:/app/saved_sessions
-        # 생성된 코드 마운트
-        - ./llm-engine/generated:/app/generated
-      # 상태 검사 설정:
-      healthcheck:
-        test: ["CMD", "grpc_health_probe", "-addr=localhost:50051"]
-        interval: 5s
-        timeout: 3s
-        retries: 5
-      # 재시작 정책 추가
-      restart: unless-stopped
-      # 필요시 서비스 시작 명령어 지정
-      # command: ["python", "src/llm_server.py"]
+    build:
+      # 빌드 컨텍스트: 프로젝트 루트 기준 ./backend/llm_engine/ 디렉토리
+      context: ./backend/llm_engine
+      # Dockerfile 이름 (지정한 context 디렉토리 내의 파일)
+      dockerfile: Dockerfile
+    # 컨테이너 이름 설정
+    container_name: llm-service
+    # 컨테이너 내부 작업 디렉토리 설정
+    working_dir: /app
+    # .env 파일 로드:
+    # 프로젝트 루트 디렉토리에 있는 .env 파일을 로드합니다.
+    # 만약 llm-engine 전용 .env 파일이 ./backend/llm_engine/.env 에 있다면,
+    # 경로를 './backend/llm_engine/.env' 로 수정해야 합니다.
+    env_file:
+      - .env
+    # 환경 변수 설정:
+    environment:
+      # 컨테이너 내 파이썬 경로 설정
+      - PYTHONPATH=/app:/app/src:/app/generated
+    # 포트 매핑:
+    # 호스트의 50051 포트를 컨테이너의 50051 포트로 연결
+    ports:
+      - "50051:50051"
+    # 볼륨 마운트 설정:
+    # 호스트 경로는 프로젝트 루트 기준 ./backend/llm_engine/ 하위 경로로 지정합니다.
+    volumes:
+      # 파이썬 소스 코드 마운트
+      - ./backend/llm_engine/src:/app/src
+      # Protobuf 정의 파일 마운트
+      - ./backend/llm_engine/protos:/app/protos
+      # 저장된 세션 데이터 마운트
+      - ./backend/llm_engine/saved_sessions:/app/saved_sessions
+      # 생성된 코드 마운트 (./backend/llm_engine/generated 디렉토리가 있다고 가정)
+      - ./backend/llm_engine/generated:/app/generated
+    # 상태 검사 설정:
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=localhost:50051"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    # 재시작 정책 추가
+    restart: unless-stopped
+    # 필요시 서비스 시작 명령어 지정
+    # command: ["python", "src/llm_server.py"]
 
   # 3. TTS 서비스 (C++)
   #    - 외부 SDK(Azure) 의존성이 있지만 다른 내부 서비스 의존성은 적습니다.
