@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package stt;
+
+import "google/protobuf/empty.proto"; // 빈 응답 사용
+
+service STTService {
+  // 클라이언트 스트리밍 RPC: 클라이언트는 오디오 스트림을 보내고,
+  // 서버(stt-service)는 처리가 완료되면 빈 응답을 반환합니다.
+  // 실제 결과는 llm-engine으로 포워딩됩니다.
+  rpc RecognizeStream(stream STTStreamRequest) returns (google.protobuf.Empty);
+}
+
+message STTStreamRequest {
+  oneof request_data {
+    RecognitionConfig config = 1;
+    bytes audio_chunk = 2;
+  }
+}
+
+message RecognitionConfig {
+  string language = 1;
+}

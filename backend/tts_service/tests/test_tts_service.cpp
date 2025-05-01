@@ -146,8 +146,7 @@ int main(int argc, char** argv) {
         "안녕하세요, ",
         "gRPC 스트리밍 테스트입니다. ",
         "실시간으로 음성이 합성되어 ",
-        "전달되는지 확인해 보겠습니다."
-    };
+        "전달되는지 확인해 보겠습니다.
     std::string voice = "ko-KR-SoonBokNeural";
     std::string output_filename = "/app/tests/output_stream.pcm";
 
