@@ -48,7 +48,7 @@ WORKDIR /app
 COPY . .
 
 # 프로젝트 빌드
-RUN mkdir build && mv proto build && cd build && \
+RUN mkdir build && cd build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release -DSPEECHSDK_ROOT=${SPEECHSDK_ROOT} && \
     make -j$(nproc)
 

@@ -22,7 +22,7 @@ pkg_check_modules(GRPC REQUIRED IMPORTED_TARGET grpc++)
 # gRPC를 찾지 못했을 경우 에러 메시지 출력 및 종료
 if(NOT GRPC_FOUND)
     message(FATAL_ERROR "gRPC++ library not found using pkg-config. Is libgrpc++-dev installed correctly?")
-endif() # ***** 첫 번째 누락된 endif() *****
+endif()
 message(STATUS "Found gRPC++ using pkg-config for linking.")
 
 # 코드 생성을 위한 protoc 및 gRPC 플러그인 실행 파일 찾기
@@ -47,9 +47,9 @@ set(SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}) # /app
 set(BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}) # /app/build
 
 # .proto 파일 경로 (빌드 디렉토리 안으로 이동되었음)
-set(PROTO_DIR_IN_BUILD "${BINARY_DIR}/proto")
-set(PROTO_FILE_BASENAME "tts") # .proto 파일 이름 (확장자 제외)
-set(PROTO_FILE "${PROTO_DIR_IN_BUILD}/${PROTO_FILE_BASENAME}.proto") # /app/build/proto/tts.proto
+set(PROTO_SOURCE_DIR "${SOURCE_DIR}/proto") # /app/proto
+set(PROTO_FILE_BASENAME "tts") # .proto 파일 이름
+set(PROTO_FILE "${PROTO_SOURCE_DIR}/${PROTO_FILE_BASENAME}.proto")
 
 # 생성된 코드 저장 위치
 set(GENERATED_DIR "${BINARY_DIR}/generated") # /app/build/generated
@@ -80,7 +80,7 @@ set(SPEECHSDK_LIBRARY_DIR "${SPEECHSDK_ROOT}/lib/x64")
 add_custom_command(
     OUTPUT ${ALL_GENERATED_SOURCES} ${ALL_GENERATED_HEADERS}
     COMMAND ${Protobuf_PROTOC_EXECUTABLE}
-            --proto_path=${PROTO_DIR_IN_BUILD}        # Proto 파일 검색 경로
+            --proto_path=${PROTO_SOURCE_DIR}       # Proto 파일 검색 경로
             --cpp_out=${GENERATED_DIR}            # .pb.cc/.pb.h 출력 경로
             --grpc_out=${GENERATED_DIR}           # .grpc.pb.cc/.grpc.pb.h 출력 경로
             --plugin=protoc-gen-grpc=${GRPC_CPP_PLUGIN} # gRPC 플러그인 지정
