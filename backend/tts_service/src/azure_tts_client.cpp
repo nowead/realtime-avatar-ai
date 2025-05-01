@@ -27,6 +27,18 @@ SynthesisResult AzureTTSClient::synthesize(
 ) {
     // Config 설정
     auto config = SpeechConfig::FromSubscription(subscription_key_, region_);
+
+    // ---=[ SDK 로그 활성화 코드 추가 시작 ]=---
+    // try {
+    //   // 로그 파일 경로 설정 (컨테이너 내부에 쓰기 가능한 경로)
+    //   config->SetProperty(PropertyId::Speech_LogFilename, "/tmp/azure_sdk.log");
+    //   std::cout << "💡 SDK logging enabled to /tmp/azure_sdk.log" << std::endl;
+    // } catch (const std::exception& e) {
+    //     // SetProperty 에서도 예외가 발생할 수 있으므로 예외 처리 추가 (선택적)
+    //     std::cerr << "❌ Failed to set SDK log filename: " << e.what() << std::endl;
+    // }
+    // ---=[ SDK 로그 활성화 코드 추가 끝 ]=---
+
     config->SetSpeechSynthesisOutputFormat(
       SpeechSynthesisOutputFormat::Raw16Khz16BitMonoPcm);
     if (!voice.empty()) {

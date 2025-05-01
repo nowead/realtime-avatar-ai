@@ -50,7 +50,6 @@ down:
 # --- 테스트 ---
 
 test:
-	$(MAKE) build-test
 	$(MAKE) up
 	$(COMPOSE) run --rm test-client
 	$(MAKE) down

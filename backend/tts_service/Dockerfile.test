@@ -1,4 +1,3 @@
-# 빌드 환경 설정 (g++, grpc, protobuf 포함)
 FROM ubuntu:22.04 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -60,8 +59,4 @@ WORKDIR /app
 COPY --from=builder /app/test_client .
 
 # 컨테이너 시작 시 테스트 클라이언트 실행
-# 서버 주소는 docker-compose에서 정의된 서비스 이름 'tts-service' 사용 가정
 CMD ["./test_client"]
-# 만약 테스트 클라이언트가 주소를 인자로 받는다면 아래처럼 수정:
-# ENTRYPOINT ["./test_client"]
-# CMD ["tts-service:50055"]

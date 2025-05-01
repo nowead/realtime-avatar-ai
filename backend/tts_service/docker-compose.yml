@@ -15,9 +15,6 @@ services:
     ports:
       # 호스트와 컨테이너 포트 매핑 (외부 테스트용)
       - "50055:50055"
-    dns:
-      # DNS 설정 (Google DNS 사용)
-      - 8.8.8.8
     volumes:
       - ./src:/app/src
     networks:
