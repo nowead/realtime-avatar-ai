@@ -1,0 +1,56 @@
+# Dockerfile.test_external
+# stt_service의 외부 통합 테스트 및 Mock LLM 서버 실행 환경 구성
+
+# 1. Base Image: Python 3.10 (또는 프로젝트에 맞는 버전)
+FROM python:3.10-slim AS builder
+
+# 2. 작업 디렉토리 설정 및 필수 도구 설치
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/*
+
+# 3. Python 의존성 설치 (requirements.txt 사용 권장)
+#    우선 필요한 라이브러리 직접 설치
+RUN pip install --no-cache-dir \
+    protobuf==4.25.3 \
+    grpcio==1.62.2 \
+    grpcio-tools==1.62.2 \
+    pytest
+
+# 4. Proto 파일 복사 및 Python 코드 생성
+#    stt.proto와 llm_engine.proto가 protos/ 디렉토리에 있다고 가정
+COPY protos/ /app/protos/
+RUN python -m grpc_tools.protoc \
+    -I/app/protos \
+    --python_out=/app \
+    --grpc_python_out=/app \
+    /app/protos/stt.proto \
+    /app/protos/llm.proto
+# 생성된 파일: stt_pb2.py, stt_pb2_grpc.py, llm_engine_pb2.py, llm_engine_pb2_grpc.py
+
+# 5. 테스트 관련 파일 복사
+COPY tests/ /app/tests/
+
+# 6. 최종 이미지 설정 (Python 환경만 필요)
+FROM python:3.10-slim AS final
+WORKDIR /app
+
+# 빌더 이미지에서 생성된 Python 코드 및 테스트 파일 복사
+# python_out/grpc_python_out 경로를 /app으로 변경했으므로 여기서도 /app/*.py 복사
+COPY --from=builder /app/*.py /app/
+COPY --from=builder /app/tests/ /app/tests/
+COPY tests/sample.wav /app/sample.wav
+# Python 의존성 설치
+RUN pip install --no-cache-dir grpcio pytest protobuf
+
+# PYTHONPATH 설정 (생성된 gRPC 코드 인식)
+ENV PYTHONPATH=/app
+
+# docker-compose.yml에서 command로 테스트 실행 또는 mock 서버 실행
+# 기본 CMD는 설정하지 않거나, pytest 실행으로 설정 가능
+# CMD ["pytest", "/app/tests/external_integration_test.py", "-v", "-s"]
+# 또는 mock 서버 실행
+# CMD ["python", "/app/tests/mock_llm_server.py"]
+
+# docker-compose.yml에서 command를 지정하므로 여기서는 주석 처리

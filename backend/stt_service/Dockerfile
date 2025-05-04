@@ -4,6 +4,9 @@
 # 빌드 도구, SDK 및 필수 라이브러리 설치 후 소스 코드 컴파일
 FROM ubuntu:22.04 AS builder
 
+ARG TARGET_ARCH
+ENV TARGET_ARCH=${TARGET_ARCH}
+
 # Non-interactive apt-get
 ENV DEBIAN_FRONTEND=noninteractive
 # Speech SDK 설치 경로
@@ -49,12 +52,18 @@ COPY . .
 
 # 프로젝트 빌드
 RUN mkdir build && cd build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DSPEECHSDK_ROOT=${SPEECHSDK_ROOT} && \
-    make VERBOSE=1 -j$(nproc)
+    cmake .. \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DSPEECHSDK_ROOT=${SPEECHSDK_ROOT} \
+    -DTARGET_ARCH=${TARGET_ARCH} \
+    && make VERBOSE=1 -j$(nproc)
 
 # ---- Runtime Stage ----
 # 실행에 필요한 최소한의 구성 요소만 포함하는 최종 이미지
 FROM ubuntu:22.04 AS runtime
+
+ARG TARGET_ARCH
+ENV TARGET_ARCH=${TARGET_ARCH}
 
 # Non-interactive apt-get
 ENV DEBIAN_FRONTEND=noninteractive
@@ -81,9 +90,9 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # 빌더 스테이지에서 필요한 SDK 라이브러리 복사
-COPY --from=builder ${SPEECHSDK_ROOT}/lib/arm64/libMicrosoft.CognitiveServices.Speech.core.so /usr/local/lib/
-COPY --from=builder ${SPEECHSDK_ROOT}/lib/arm64/libpal_azure_c_shared_openssl3.so /usr/local/lib/
-COPY --from=builder ${SPEECHSDK_ROOT}/lib/arm64/libMicrosoft.CognitiveServices.Speech.extension.audio.sys.so /usr/local/lib/
+COPY --from=builder ${SPEECHSDK_ROOT}/lib/${TARGET_ARCH}/libMicrosoft.CognitiveServices.Speech.core.so /usr/local/lib/
+COPY --from=builder ${SPEECHSDK_ROOT}/lib/${TARGET_ARCH}/libpal_azure_c_shared_openssl3.so /usr/local/lib/
+COPY --from=builder ${SPEECHSDK_ROOT}/lib/${TARGET_ARCH}/libMicrosoft.CognitiveServices.Speech.extension.audio.sys.so /usr/local/lib/
 # 필요시 다른 확장 라이브러리도 여기에 추가
 
 # 링커 캐시 업데이트

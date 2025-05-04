@@ -78,7 +78,13 @@ endif()
 message(STATUS "Using Azure Speech SDK from: ${SPEECHSDK_ROOT}")
 set(SPEECHSDK_CXX_INCLUDE_DIR "${SPEECHSDK_ROOT}/include/cxx_api")
 set(SPEECHSDK_C_INCLUDE_DIR "${SPEECHSDK_ROOT}/include/c_api")
-set(SPEECHSDK_LIBRARY_DIR "${SPEECHSDK_ROOT}/lib/arm64") # Assuming x64 Linux
+if(${TARGET_ARCH} STREQUAL "arm64")
+    set(SPEECHSDK_LIBRARY_DIR "${SPEECHSDK_ROOT}/lib/arm64") # Assuming arm64 Linux
+elseif(${TARGET_ARCH} STREQUAL "x64" OR ${TARGET_ARCH} STREQUAL "x86_64")
+    set(SPEECHSDK_LIBRARY_DIR "${SPEECHSDK_ROOT}/lib/x64") # Assuming x64 Linux
+else()
+    message(FATAL_ERROR "Unsupported architecture: ${TARGET_ARCH}.")
+endif()
 
 # ---=[ Protobuf/gRPC 코드 생성 (Custom Command 사용) ]=---
 

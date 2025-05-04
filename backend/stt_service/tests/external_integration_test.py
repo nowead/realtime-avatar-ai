@@ -11,10 +11,8 @@ from threading import Thread
 try:
     import stt_pb2
     import stt_pb2_grpc
+    # empty_pb2는 테스트 결과 검증에 사용되므로 import 유지
     from google.protobuf import empty_pb2
-    # LLM 관련 import는 이제 필요 없음 (서버는 분리됨)
-    # import llm_engine_pb2
-    # import llm_engine_pb2_grpc
 except ImportError:
     print("Error: Protobuf/gRPC Python files not found.")
     print("Run 'python -m grpc_tools.protoc ...' first.")
@@ -68,15 +66,20 @@ def generate_audio_chunks(file_path, chunk_size=1024):
         pytest.fail(f"Error reading audio file {file_path}: {e}")
 
 def create_request_iterator(language, audio_file, chunk_size=1024):
-    """gRPC RecognizeStream 요청 이터레이터를 생성 (이전과 동일)"""
+    """gRPC RecognizeStream 요청 이터레이터를 생성"""
     config = stt_pb2.RecognitionConfig(language=language)
     yield stt_pb2.STTStreamRequest(config=config)
     print("TEST: Sent RecognitionConfig")
     sent_chunk_count = 0
     for audio_chunk_data in generate_audio_chunks(audio_file, chunk_size):
-        chunk_msg = stt_pb2.AudioChunk(content=audio_chunk_data)
-        yield stt_pb2.STTStreamRequest(audio_chunk=chunk_msg)
+        # ---===>>> 수정된 부분 시작 <<<===---
+        # AudioChunk 메시지를 별도로 만들지 않고,
+        # STTStreamRequest의 audio_chunk 필드 (bytes 타입)에 직접 데이터 할당
+        yield stt_pb2.STTStreamRequest(audio_chunk=audio_chunk_data)
+        # ---===>>> 수정된 부분 끝 <<<===---
         sent_chunk_count += 1
+        # 필요시 약간의 지연 추가 (선택 사항)
+        # time.sleep(0.01)
     print(f"TEST: Finished sending {sent_chunk_count} audio chunks")
 
 

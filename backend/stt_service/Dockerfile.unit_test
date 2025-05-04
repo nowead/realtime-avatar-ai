@@ -1,10 +1,12 @@
-# Dockerfile.unit_test
-
 # Base Image: Ubuntu 22.04 LTS
+# 이 Dockerfile은 유닛 테스트 빌드 및 실행에 중점을 둡니다.
 
 # ---- Builder Stage (Unit Testing Focus) ----
 # 빌드 도구, SDK, 테스트 프레임워크 및 필수 라이브러리 설치 후 소스 코드 및 테스트 컴파일/실행
 FROM ubuntu:22.04 AS builder
+
+ARG TARGET_ARCH
+ENV TARGET_ARCH=${TARGET_ARCH}
 
 # Non-interactive apt-get
 ENV DEBIAN_FRONTEND=noninteractive
@@ -47,10 +49,7 @@ RUN cd /usr/src/googletest && \
     cmake CMakeLists.txt && \
     make && \
     # 컴파일된 라이브러리 파일(*.a)들을 시스템 라이브러리 경로로 복사합니다.
-    # 경로는 시스템에 따라 /usr/lib/ 또는 /usr/lib/aarch64-linux-gnu/ 등일 수 있습니다.
-    # find /usr/src/googletest -name '*.a' -exec cp {} /usr/lib \; # 간단한 복사 방법
-    # 또는 install 명령 사용 (더 권장될 수 있음)
-    find /usr/src/googletest -name '*.a' -exec install -o root -g root -m 644 {} /usr/lib \;
+    find . -name '*.a' -exec install -o root -g root -m 644 {} /usr/lib \;
 
 
 # Azure Speech SDK 다운로드 및 설치 (변경 없음)
@@ -63,28 +62,32 @@ RUN mkdir -p $SPEECHSDK_ROOT && \
 WORKDIR /app
 COPY . .
 
-# 프로젝트 및 유닛 테스트 빌드
-# CMakeLists.txt 에 unit_tests 타겟이 정의되어 있다고 가정합니다.
-RUN mkdir build && cd build && \
-    # CMake 실행 시 테스트 빌드 옵션 추가 가능 (예: -DBUILD_TESTS=ON)
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DSPEECHSDK_ROOT=${SPEECHSDK_ROOT} && \
-    make VERBOSE=1 -j$(nproc) # make all (stt_server 및 unit_tests 모두 빌드)
+# ---=[ 수정됨: 프로젝트 빌드 및 유닛 테스트 실행 ]=---
+# 1. CMakeLists.txt.test 를 사용하도록 파일 이름 변경
+# 2. CMake 및 Make 실행 (unit_tests 타겟 빌드)
+# 3. 빌드된 unit_tests 실행
+RUN \
+    # 테스트용 CMake 파일 이름 변경하여 적용
+    mv CMakeLists.txt.test CMakeLists.txt && \
+    # 빌드 디렉토리 생성 및 이동
+    mkdir build && cd build && \
+    echo "Running CMake with test configuration..." && \
+    cmake .. \
+      -DCMAKE_BUILD_TYPE=Debug \
+      -DSPEECHSDK_ROOT=${SPEECHSDK_ROOT} \
+      -DTARGET_ARCH=${TARGET_ARCH} \
+    && \
+    echo "Running make..." && \
+    make VERBOSE=1 -j$(nproc)
 
-# ---=[ 수정됨: 유닛 테스트 실행 ]=---
-# 빌드된 유닛 테스트 실행 파일을 실행합니다.
-# 실행 파일 이름과 경로는 CMakeLists.txt 설정에 따라 달라질 수 있습니다. (예: unit_tests)
-# 테스트 실패 시 Docker 빌드가 여기서 중단됩니다.
-RUN cd build && ./unit_tests # 실행 파일 이름 확인 필요!
+RUN echo "Copying Speech SDK runtime libraries for ${TARGET_ARCH}..." && \
+    cp /opt/speechsdk/lib/${TARGET_ARCH}/libMicrosoft.CognitiveServices.Speech.core.so /usr/local/lib/ && \
+    cp /opt/speechsdk/lib/${TARGET_ARCH}/libpal_azure_c_shared_openssl3.so /usr/local/lib/ && \
+    cp /opt/speechsdk/lib/${TARGET_ARCH}/libMicrosoft.CognitiveServices.Speech.extension.audio.sys.so /usr/local/lib/ && \
+    # 필요시 다른 Speech SDK 라이브러리 추가
+    echo "Running ldconfig..." && \
+    ldconfig
 
-
-# ---- Runtime Stage (선택 사항) ----
-# 유닛 테스트만 실행하는 것이 목적이라면 아래 Runtime Stage는 생략 가능합니다.
-# 만약 테스트가 통과된 빌드 결과(stt_server)를 사용하고 싶다면 유지합니다.
-
-# FROM ubuntu:22.04 AS runtime
-# ... (기존 Runtime Stage 내용과 동일) ...
-# ... (라이브러리 복사, ldconfig, WORKDIR, 최종 실행 파일 복사 등) ...
-
-# 유닛 테스트 이미지의 최종 목적이 실행 파일 배포가 아니라면
-# CMD ["./stt_server"] 대신 다른 명령 (예: bash)을 사용하거나 생략할 수 있습니다.
-# CMD ["./stt_server"]
+WORKDIR /app/build      # 테스트 실행 파일이 있는 빌드 디렉토리로 이동
+# CMD ["./unit_tests"]
+ENTRYPOINT ["/app/build/unit_tests"]
