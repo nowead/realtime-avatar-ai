@@ -1,47 +1,67 @@
+# llm_engine/docker-compose.yml
 services:
+  # 1. Mock TTS Service (for testing llm_engine)
+  mock-tts:
+    build:
+      context: .
+      dockerfile: Dockerfile.external_test # Python 환경 재사용
+      args:
+        - TARGET_ARCH=${TARGET_ARCH:-amd64} # Python 이미지는 아키텍처 덜 민감
+    container_name: mock-tts-server
+    # Mock TTS 서버 스크립트 실행
+    command: ["python", "/app/tests/mock_tts_server.py"]
+    ports:
+      - "50053:50053" # Mock TTS 포트 (기본값 가정)
+    networks:
+      - llm_test_net
+    environment:
+      - PYTHONUNBUFFERED=1
+      # Mock 서버 동작 제어용 환경 변수 추가 가능 (예: MOCK_TTS_PORT=50053)
+
+  # 2. LLM Engine Service (Main Application)
   llm-engine:
     build:
       context: .
-      dockerfile: Dockerfile
-    container_name: llm-engine
-    working_dir: /app # Dockerfile의 WORKDIR이 /app 라고 가정 (명시적으로 추가)
+      dockerfile: Dockerfile # 메인 서비스용 Dockerfile
+      args:
+        - TARGET_ARCH=${TARGET_ARCH:-amd64} # 빌드할 아키텍처 지정
+    container_name: llm-engine-service
     env_file:
-      - .env
+      - .env # .env 파일에서 환경 변수 로드 (OPENAI_API_KEY 등)
     environment:
-      # /app/src 에 있는 코드에서 /app/generated 등을 쉽게 import 하기 위해 /app을 경로에 추가
-      - PYTHONPATH=/app:/app/src:/app/generated 
+      # Mock TTS 서비스 이름과 포트로 설정 (Docker 내부 네트워크 사용)
+      - TTS_SERVICE_ADDRESS=mock-tts:50053
+      - LLM_SERVER_ADDRESS=0.0.0.0:50052 # 서비스 내부 리스닝 주소
+      # - OPENAI_MODEL=gpt-4o # .env 또는 여기서 설정 가능
     ports:
-      - "50051:50051"
-    volumes:
-      # 호스트의 ./app 폴더를 컨테이너의 /app/src 폴더로 마운트 (파이썬 소스코드 위치)
-      - ./src:/app/src 
-      # 호스트의 ./protos 폴더를 컨테이너의 /app/protos 폴더로 마운트
-      - ./protos:/app/protos
-      - ./saved_sessions:/app/saved_sessions # 호스트의 ./saved_sessions 폴더를 컨테이너의 /app/saved_sessions 폴더로 마운트
-      # 호스트의 ./generated 폴더를 컨테이너의 /app/generated 폴더로 마운트 
-      # (호스트에서 컴파일하거나, 빈 폴더를 마운트하여 컨테이너 실행 시 생성된 파일 공유)
-    healthcheck:
-      test: ["CMD", "grpc_health_probe", "-addr=localhost:50051"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    # command: ["python", "src/llm_server.py"] # 필요시 시작 명령어 경로 수정 (예시)
+      - "50052:50052" # LLM 서비스 gRPC 포트 외부에 노출
+    depends_on:
+      - mock-tts # Mock TTS가 먼저 시작되도록 설정
+    networks:
+      - llm_test_net
+    # Healthcheck 추가 고려 (OpenAI 연결 가능 여부 등)
 
+  # 3. Test Client (Runs Python Integration Tests against llm-engine)
   test-client:
     build:
       context: .
-      dockerfile: Dockerfile.test
-    container_name: test-client
-    working_dir: /app # Dockerfile의 WORKDIR이 /app 라고 가정 (명시적으로 추가)
+      dockerfile: Dockerfile.external_test # Python 환경 재사용
+      args:
+        - TARGET_ARCH=${TARGET_ARCH:-amd64}
+    container_name: test-llm-client
     environment:
-      # 테스트 코드에서도 /app 아래 모듈들을 찾을 수 있도록 경로 추가
-      - PYTHONPATH=/app:/app/src:/app/generated 
-    volumes:
-      # 테스트 실행에 필요한 소스, 프로토, 생성된 코드, 테스트 코드 마운트
-      - ./src:/app/src
-      - ./protos:/app/protos
-      - ./tests:/app/tests # 호스트의 ./tests 폴더를 컨테이너의 /app/tests 폴더로 마운트
+      # 테스트 대상 LLM 서비스 주소 설정 (Docker 내부 네트워크 사용)
+      - LLM_SERVICE_ADDRESS=llm-engine:50052
+      # - AUDIO_SAMPLE_PATH=/app/sample.wav # 오디오 불필요
+      - PYTHONUNBUFFERED=1
     depends_on:
+      # llm-engine 서비스가 준비된 후 테스트 시작 (healthcheck 사용 권장)
       llm-engine:
-        condition: service_healthy
-    # command: ["pytest", "tests/"] # 필요시 테스트 실행 명령어 경로 수정 (예시)
+         condition: service_started # 또는 service_healthy (healthcheck 설정 시)
+    networks:
+      - llm_test_net
+    # llm-engine 통합 테스트 스크립트 실행
+    command: ["pytest", "/app/tests/external_integration_test.py", "-v", "-s"]
+
+networks:
+  llm_test_net:

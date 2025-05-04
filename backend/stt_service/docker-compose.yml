@@ -3,8 +3,8 @@ services:
   mock-llm:
     build:
       context: .
-      # Dockerfile.test_external 사용 명시
-      dockerfile: Dockerfile.test_external
+      # Dockerfile.external_test 사용 명시
+      dockerfile: Dockerfile.external_test
       args:
         - TARGET_ARCH=${TARGET_ARCH}
     container_name: mock-llm-server
@@ -49,8 +49,8 @@ services:
   test-client:
     build:
       context: .
-      # Dockerfile.test_external 사용 명시
-      dockerfile: Dockerfile.test_external
+      # Dockerfile.external_test 사용 명시
+      dockerfile: Dockerfile.external_test
       args:
         - TARGET_ARCH=${TARGET_ARCH}
     container_name: test-stt-client

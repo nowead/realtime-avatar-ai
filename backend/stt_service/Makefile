@@ -16,7 +16,7 @@ UNIT_TEST_IMAGE_NAME := stt-unit-test
 UNIT_TEST_DOCKERFILE := Dockerfile.unit_test
 
 EXTERNAL_TEST_IMAGE_NAME := stt-test-external
-EXTERNAL_TEST_DOCKERFILE := Dockerfile.test_external
+EXTERNAL_TEST_DOCKERFILE := Dockerfile.external_test
 
 COMPOSE_FILE := docker-compose.yml
 
