@@ -72,7 +72,7 @@ endif() # ***** 두 번째 누락된 endif() *****
 message(STATUS "Using Azure Speech SDK from: ${SPEECHSDK_ROOT}")
 set(SPEECHSDK_CXX_INCLUDE_DIR "${SPEECHSDK_ROOT}/include/cxx_api")
 set(SPEECHSDK_C_INCLUDE_DIR "${SPEECHSDK_ROOT}/include/c_api")
-set(SPEECHSDK_LIBRARY_DIR "${SPEECHSDK_ROOT}/lib/x64")
+set(SPEECHSDK_LIBRARY_DIR "${SPEECHSDK_ROOT}/lib/arm64")
 
 # ---=[ Protobuf/gRPC 코드 생성 (Custom Command 사용) ]=---
 

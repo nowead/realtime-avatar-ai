@@ -1,0 +1,76 @@
+services:
+  # 1. Mock LLM Engine Service (for testing)
+  mock-llm:
+    build:
+      context: . # Dockerfile.test_external과 동일한 컨텍스트 사용
+      dockerfile: Dockerfile.test_external # Python 환경 재사용
+    container_name: mock-llm-server
+    # external_integration_test.py 내의 Mock 서버 실행 로직 필요
+    # 또는 별도의 mock_llm_server.py 실행
+    # 여기서는 external_integration_test.py를 수정하여 서버만 실행하는 모드를 가정하거나,
+    # 간단히 python 명령어로 해당 파일 내 서버 클래스를 실행하는 스크립트를 만듦.
+    # 임시 방편: external_integration_test.py 파일 자체를 실행 (내부에 서버 시작 코드가 있다고 가정)
+    # 더 좋은 방법: 별도의 mock_llm_server.py 만들고 CMD ["python", "mock_llm_server.py"] 사용
+    command: >
+      sh -c "
+      echo 'Starting Mock LLM Server from external_integration_test.py...';
+      # external_integration_test.py에 서버 실행 로직이 포함되어 있고,
+      # 실행 시 서버가 시작된다고 가정. 실제로는 별도 파일 권장.
+      # pytest 대신 서버 실행 명령어를 넣어야 함. 임시로 sleep 사용.
+      # python mock_llm_server.py 와 같은 형태가 이상적.
+      # 아래는 임시 예시이며, 실제 Mock 서버 실행 로직으로 대체 필요.
+      # pip install grpcio && python -c 'import time; print(\"Mock LLM running...\"); time.sleep(3600)'
+      python -c \"import grpc; from concurrent import futures; import time; import llm_engine_pb2_grpc; class MockLLMEngineService(llm_engine_pb2_grpc.LLMServiceServicer): pass; server = grpc.server(futures.ThreadPoolExecutor(max_workers=1)); llm_engine_pb2_grpc.add_LLMServiceServicer_to_server(MockLLMEngineService(), server); server.add_insecure_port('[::]:50051'); print('Mock LLM listening on 50051'); server.start(); try: server.wait_for_termination() except KeyboardInterrupt: server.stop(0)\"
+      "
+    ports:
+      - "50051:50051" # Mock LLM 포트 노출 (디버깅 용도, 실제 테스트는 내부 네트워크 사용)
+    networks:
+      - stt_test_net
+
+  # 2. STT Service (Main Application)
+  stt-service:
+    build:
+      context: .
+      dockerfile: Dockerfile # 메인 서비스용 Dockerfile
+    container_name: stt-service
+    env_file:
+      - .env # .env 파일에서 환경 변수 로드
+    environment:
+      # LLM 주소를 Mock LLM 서비스의 이름으로 설정
+      - LLM_ENGINE_ADDRESS=mock-llm:50051
+      # STT 서버 주소 설정 (컨테이너 내부 포트)
+      - STT_SERVER_ADDRESS=0.0.0.0:50056
+      # 추가 환경 변수 필요 시 여기에 정의
+    ports:
+      - "50056:50056" # STT 서비스 gRPC 포트 노출 (외부에서 테스트 시 필요할 수 있음)
+    depends_on:
+      - mock-llm # Mock LLM이 시작된 후 시작
+    networks:
+      - stt_test_net
+
+  # 3. Test Client (Runs Python Integration Tests)
+  test-client:
+    build:
+      context: .
+      dockerfile: Dockerfile.test_external # Python 테스트용 Dockerfile
+    container_name: test-stt-client
+    environment:
+      # 테스트 대상 STT 서비스 주소 (서비스 이름 사용)
+      - STT_SERVICE_ADDRESS=stt-service:50056
+      # Mock LLM 주소 (서비스 이름 사용)
+      - MOCK_LLM_SERVICE_ADDRESS=mock-llm:50051
+      # 오디오 파일 경로 (Dockerfile.test_external 내부 경로)
+      - AUDIO_SAMPLE_PATH=./sample.wav
+      # Python의 출력 버퍼링 비활성화 (로그 즉시 확인용)
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      # stt-service와 mock-llm이 실행된 후 테스트 시작
+      # 더 안정적인 시작 순서 보장을 위해 healthcheck 사용 고려
+      - stt-service
+      - mock-llm
+    networks:
+      - stt_test_net
+    # Dockerfile.test_external의 CMD가 pytest를 실행하므로 별도 command 불필요
+
+networks:
+  stt_test_net: # 서비스 간 통신을 위한 사용자 정의 브릿지 네트워크

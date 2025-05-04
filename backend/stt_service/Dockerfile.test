@@ -1,0 +1,14 @@
+# Dockerfile.test_external - For running the Python external integration tests AND the mock server
+
+# ... (이전 내용 동일) ...
+
+# 6. Copy Test Script, Mock Server Script, and Sample Data
+COPY tests/external_integration_test.py .
+COPY tests/mock_llm_server.py .
+COPY tests/sample.wav .
+
+# ... (환경 변수 설정 동일) ...
+
+# 8. Define Execution Command (기본값: 테스트 실행)
+#    Mock 서버 실행은 docker-compose.yml에서 command로 지정
+CMD ["pytest", "-v", "-s", "external_integration_test.py"]

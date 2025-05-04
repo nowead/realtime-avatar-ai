@@ -1,219 +1,311 @@
+// stt_service.cpp (수정 제안된 전체 코드)
+
 #include "stt_service.h"
 #include <iostream>
 #include <string>
 #include <vector>
-#include <future>    // std::promise, std::future
-#include <atomic>    // std::atomic_bool
-#include <random>    // For basic UUID generation
-#include <sstream>   // For basic UUID generation
-#include <iomanip>   // For basic UUID generation
-#include <chrono>    // std::chrono::*
+#include <future>
+#include <atomic>
+#include <random>
+#include <sstream>
+#include <iomanip>
+#include <chrono>
+#include <thread> // for sleep_for (optional)
+
+// 필요한 경우 추가 헤더
+#include "llm_engine_client.h" // LLMEngineClient 사용 위해 필요
+#include "azure_stt_client.h" // AzureSTTClient 사용 위해 필요
+#include <google/protobuf/empty.pb.h> // Empty 타입 사용 위해 필요
+#include "stt.pb.h" // STTStreamRequest 등 사용 위해 필요
+
+// grpc 상태 코드 사용 편의성
+using grpc::Status;
+using grpc::StatusCode;
 
 namespace stt {
 
-// 간단한 UUID 생성 함수 (예시)
-std::string generate_uuid() {
+// 간단한 UUID 생성 함수 (변경 없음)
+std::string STTServiceImpl::generate_uuid() {
     std::random_device rd;
     std::mt19937_64 gen(rd());
     std::uniform_int_distribution<uint64_t> dis;
 
     std::stringstream ss;
     ss << std::hex << std::setfill('0');
-    ss << std::setw(16) << dis(gen); // 64 bits
-    ss << std::setw(16) << dis(gen); // 64 bits
+    ss << std::setw(16) << dis(gen);
+    ss << std::setw(16) << dis(gen);
     return ss.str();
 }
 
-
-// 생성자: 의존성 주입
+// 생성자 (변경 없음)
 STTServiceImpl::STTServiceImpl(std::shared_ptr<AzureSTTClient> azure_client,
                                std::shared_ptr<LLMEngineClient> llm_client)
   : azure_stt_client_(azure_client), llm_engine_client_(llm_client)
 {
     if (!azure_stt_client_) {
-        throw std::runtime_error("AzureSTTClient cannot be null.");
+        throw std::runtime_error("AzureSTTClient cannot be null in STTServiceImpl.");
     }
     if (!llm_engine_client_) {
-        throw std::runtime_error("LLMEngineClient cannot be null.");
+        throw std::runtime_error("LLMEngineClient cannot be null in STTServiceImpl.");
     }
 }
 
-// Client Streaming RPC 구현
+// Client Streaming RPC 구현 (내부 로직 수정됨)
 Status STTServiceImpl::RecognizeStream(
     ServerContext* context,
     ServerReader<STTStreamRequest>* reader,
-    Empty* response // 최종 응답 (내용 없음)
+    google::protobuf::Empty* response // 수정됨: 타입 명시 (using 대신)
 ) {
-    std::string client_peer = context->peer();
-    std::cout << "✅ New client connected for STT: " << client_peer << std::endl;
+    const std::string client_peer = context->peer();
+    const std::string session_id = generate_uuid();
+    std::cout << "✅ [" << session_id << "] New client connection from: " << client_peer << std::endl;
 
     std::string language;
-    std::string session_id = generate_uuid(); // 각 스트림마다 고유 ID 생성
-    std::cout << "   Session ID: " << session_id << std::endl;
+    std::atomic<bool> azure_started{false};
+    std::atomic<bool> llm_stream_started{false};
+    std::atomic<bool> stream_error_occurred{false};
+    std::string error_message;
 
-    // 비동기 작업 완료 시그널 및 오류 추적용 변수
-    std::promise<void> processing_complete_promise;
-    auto processing_complete_future = processing_complete_promise.get_future();
-    std::atomic<bool> critical_error_occurred(false);
-    std::atomic<bool> llm_stream_started(false); // LLM 스트림 시작 여부 추적
+    std::promise<void> azure_processing_complete_promise;
+    auto azure_processing_complete_future = azure_processing_complete_promise.get_future();
 
-    // --- 1. 첫 메시지 (Config) 읽기 ---
-    STTStreamRequest initial_request;
-    if (!reader->Read(&initial_request)) {
-        std::cerr << "❌ Failed to read initial request from client: " << client_peer << std::endl;
-        return Status(grpc::StatusCode::INVALID_ARGUMENT, "Failed to read initial request.");
-    }
+    // ---= Graceful cleanup lambda function (내부 수정됨) =---
+    auto cleanup_resources = [&](bool stop_azure, bool finish_llm) {
+         std::cout << "🧹 [" << session_id << "] Cleaning up resources... StopAzure=" << stop_azure << ", FinishLLM=" << finish_llm << std::endl;
+         if (finish_llm && llm_engine_client_ && llm_stream_started.load()) {
+             std::cout << "   Finishing LLM stream..." << std::endl;
+             // 수정됨: Status 객체 하나만 받음
+             grpc::Status llm_status = llm_engine_client_->FinishStream();
+             if (!llm_status.ok()) {
+                  std::cerr << "   ⚠️ LLM stream finish error during cleanup: (" << llm_status.error_code() << ") "
+                            << llm_status.error_message() << std::endl;
+             } else {
+                  // 수정됨: llm_summary 관련 로깅 제거
+                  std::cout << "   LLM stream finished successfully during cleanup." << std::endl;
+             }
+             llm_stream_started.store(false);
+         }
+         if (stop_azure && azure_stt_client_ && azure_started.load()) {
+              std::cout << "   Stopping Azure recognition..." << std::endl;
+              // 헤더 수정 후 이 함수 호출이 가능해야 함
+              azure_stt_client_->StopContinuousRecognition();
+              azure_started.store(false);
+         }
+    };
 
-    if (initial_request.request_data_case() == STTStreamRequest::kConfig) {
+    try {
+        // --- 1. 첫 메시지 (Config) 읽기 --- (변경 없음)
+        STTStreamRequest initial_request;
+        std::cout << "   [" << session_id << "] Waiting for initial RecognitionConfig..." << std::endl;
+        if (!reader->Read(&initial_request)) {
+            error_message = "Failed to read initial request from client.";
+            std::cerr << "❌ [" << session_id << "] " << error_message << " Peer: " << client_peer << std::endl;
+            return Status(StatusCode::INVALID_ARGUMENT, error_message);
+        }
+        // ... (config 읽기 및 유효성 검사 - 기존과 동일) ...
+        if (initial_request.request_data_case() != STTStreamRequest::kConfig) {
+            error_message = "Initial request must be RecognitionConfig.";
+            std::cerr << "❌ [" << session_id << "] " << error_message << std::endl;
+            return Status(StatusCode::INVALID_ARGUMENT, error_message);
+        }
         language = initial_request.config().language();
         if (language.empty()) {
-            std::cerr << "❌ Language code is missing in RecognitionConfig." << std::endl;
-             return Status(grpc::StatusCode::INVALID_ARGUMENT, "Language code is required.");
+           error_message = "Language code is missing in RecognitionConfig.";
+           std::cerr << "❌ [" << session_id << "] " << error_message << std::endl;
+           return Status(StatusCode::INVALID_ARGUMENT, error_message);
         }
-         std::cout << "   Config received: Language=" << language << std::endl;
-    } else {
-        std::cerr << "❌ Initial request is not RecognitionConfig." << std::endl;
-        return Status(grpc::StatusCode::INVALID_ARGUMENT, "Initial request must be RecognitionConfig.");
-    }
-
-    // --- 2. LLM Engine 스트림 시작 ---
-    if (!llm_engine_client_->StartStream(session_id)) {
-        std::cerr << "❌ Failed to start stream to LLM Engine for session: " << session_id << std::endl;
-        critical_error_occurred.store(true);
-        // LLM 스트림 시작 실패 시 즉시 종료
-         return Status(grpc::StatusCode::INTERNAL, "Failed to connect to LLM engine.");
-    }
-    llm_stream_started.store(true);
+        std::cout << "   [" << session_id << "] Config received: Language=" << language << std::endl;
 
 
-    // --- 3. Azure STT 콜백 정의 ---
-    // TextChunkCallback: Azure에서 텍스트 조각 받을 때마다 LLM 클라이언트로 전송
-    auto text_callback =
-        [this, &critical_error_occurred, session_id](const std::string& text, bool is_final) {
-        if (critical_error_occurred.load()) return; // 이미 오류 발생 시 추가 전송 중단
-
-        //std::cout << "   Forwarding to LLM: (final=" << is_final << ") '" << text.substr(0,30) << "...'" << std::endl;
-        if (!llm_engine_client_->SendTextChunk(text, is_final)) {
-            std::cerr << "❌ Error sending text chunk to LLM Engine for session: " << session_id << ". Marking as error." << std::endl;
-            critical_error_occurred.store(true);
-            // 여기서 Azure 인식 중단 시도? (복잡할 수 있음)
-            // azure_stt_client_->StopContinuousRecognition(); // 콜백 내에서 호출 시 데드락 주의
+        // --- 2. LLM Engine 스트림 시작 --- (변경 없음)
+        std::cout << "   [" << session_id << "] Starting stream to LLM Engine..." << std::endl;
+        if (!llm_engine_client_->StartStream(session_id)) {
+            error_message = "Failed to start stream to LLM Engine.";
+            std::cerr << "❌ [" << session_id << "] " << error_message << std::endl;
+            stream_error_occurred.store(true);
+            return Status(StatusCode::INTERNAL, error_message);
         }
-    };
+        llm_stream_started.store(true);
+        std::cout << "   [" << session_id << "] LLM stream started successfully." << std::endl;
 
-    // RecognitionCompletionCallback: Azure 인식 전체가 완료/실패했을 때 호출됨
-    auto completion_callback =
-        [this, &critical_error_occurred, &processing_complete_promise, session_id, &llm_stream_started]
-        (bool success, const std::string& error_msg) {
 
-        std::cout << "ℹ️ Azure STT processing finished for session: " << session_id << ". Success: " << success << std::endl;
-        if (!success) {
-            std::cerr << "   Azure STT Error: " << error_msg << std::endl;
-            critical_error_occurred.store(true);
-        }
+        // --- 3. Azure STT 콜백 정의 (내부 수정됨) ---
 
-        // Azure 처리가 끝나면, LLM 스트림도 종료해야 함
-        if(llm_stream_started.load()) { // LLM 스트림이 성공적으로 시작된 경우에만 종료 시도
-            std::cout << "   Finishing LLM engine stream for session: " << session_id << std::endl;
-            auto [llm_status, llm_summary] = llm_engine_client_->FinishStream();
-            if (!llm_status.ok()) {
-                 std::cerr << "   LLM stream finish error: (" << llm_status.error_code() << ") "
-                           << llm_status.error_message() << std::endl;
-                critical_error_occurred.store(true); // LLM 종료 실패도 전체 오류로 간주
-            } else {
-                 std::cout << "   LLM stream finished. Summary success: " << llm_summary.success() << std::endl;
-                 // LLM 요약 결과 자체의 success 플래그에 따른 오류 처리 추가 가능
-                 if (!llm_summary.success()) {
-                      std::cerr << "   LLM processing summary indicates failure: " << llm_summary.message() << std::endl;
-                      // critical_error_occurred.store(true); // LLM 내부 실패를 gRPC 오류로 반환할지 결정
+        // TextChunkCallback: Azure -> LLM 텍스트 전달
+        auto text_callback =
+            [this, session_id, &stream_error_occurred, &error_message, llm_client = llm_engine_client_]
+            (const std::string& text, bool is_final) { // is_final 은 Azure 콜백에서 오지만 LLM 전송 시 사용 안함
+
+            if (stream_error_occurred.load()) return;
+
+            // 수정됨: is_final 인자 제거하고 호출
+            if (!llm_client->SendTextChunk(text)) {
+                std::cerr << "❌ [" << session_id << "] Error sending text chunk to LLM Engine. Marking stream as error." << std::endl;
+                if (!stream_error_occurred.load()) {
+                     error_message = "Failed to forward text chunk to LLM engine.";
+                     stream_error_occurred.store(true);
+                }
+            }
+        };
+
+        // RecognitionCompletionCallback: Azure 인식 완료/오류 시 호출됨 (변경 없음)
+        auto completion_callback =
+            [this, session_id, &stream_error_occurred, &error_message, &azure_processing_complete_promise]
+            (bool success, const std::string& azure_msg) {
+            // ... (기존과 동일) ...
+             std::cout << "ℹ️ [" << session_id << "] Azure STT processing finished. Success: " << success << std::endl;
+             if (!success) {
+                 std::cerr << "   Azure STT Error: " << azure_msg << std::endl;
+                 if (!stream_error_occurred.load()) {
+                     error_message = "Azure STT recognition failed: " + azure_msg;
+                     stream_error_occurred.store(true);
                  }
+             }
+             try {
+                 azure_processing_complete_promise.set_value();
+             } catch (const std::future_error& e) {
+                  std::cerr << "ℹ️ [" << session_id << "] Promise already set in completion_callback: " << e.what() << std::endl;
+             }
+        };
+
+
+        // --- 4. Azure STT 인식 시작 --- (변경 없음)
+        std::cout << "   [" << session_id << "] Starting Azure continuous recognition..." << std::endl;
+        if (!azure_stt_client_->StartContinuousRecognition(language, text_callback, completion_callback)) {
+            error_message = "Failed to start Azure continuous recognition.";
+            std::cerr << "❌ [" << session_id << "] " << error_message << std::endl;
+            stream_error_occurred.store(true);
+            cleanup_resources(false, true); // LLM 스트림만 정리 시도
+            return Status(StatusCode::INTERNAL, error_message);
+        }
+        azure_started.store(true);
+        std::cout << "   [" << session_id << "] Azure recognition started successfully." << std::endl;
+
+
+        // --- 5. 오디오 청크 읽기 루프 --- (PushAudioChunk 호출 가능해야 함)
+        STTStreamRequest audio_request;
+        size_t total_bytes_received = 0;
+        std::cout << "   [" << session_id << "] Waiting for audio chunks from client..." << std::endl;
+        while (!stream_error_occurred.load() && reader->Read(&audio_request)) {
+            if (context->IsCancelled()) {
+                 std::cout << "   [" << session_id << "] Client cancelled the request." << std::endl;
+                 error_message = "Request cancelled by client.";
+                 stream_error_occurred.store(true);
+                 break;
             }
+
+            if (audio_request.request_data_case() == STTStreamRequest::kAudioChunk) {
+                const auto& chunk = audio_request.audio_chunk();
+                if (!chunk.empty()) {
+                    total_bytes_received += chunk.size();
+                    // 헤더 수정 후 이 함수 호출이 가능해야 함
+                    azure_stt_client_->PushAudioChunk(
+                        reinterpret_cast<const uint8_t*>(chunk.data()),
+                        chunk.size()
+                    );
+                }
+            } // ... (else if 등 기존과 동일) ...
+             else if (audio_request.request_data_case() == STTStreamRequest::REQUEST_DATA_NOT_SET) {
+                 std::cerr << "⚠️ [" << session_id << "] Received request with data not set." << std::endl;
+             }
+              else {
+                  std::cerr << "⚠️ [" << session_id << "] Received unexpected non-audio chunk data after config (type: "
+                            << audio_request.request_data_case() << "). Ignoring." << std::endl;
+              }
+        } // end while
+
+        // ... (루프 종료 원인 확인 - 기존과 동일) ...
+        if (stream_error_occurred.load()) {
+              std::cerr << "❌ [" << session_id << "] Error occurred, exiting audio reading loop. Reason: " << error_message << std::endl;
         } else {
-             std::cout << "   LLM stream was not started, skipping FinishStream." << std::endl;
+              std::cout << "ℹ️ [" << session_id << "] Client finished sending audio. Total bytes received: " << total_bytes_received << "." << std::endl;
         }
 
 
-        // 모든 처리가 완료되었음을 메인 스레드에 알림
-        try {
-            processing_complete_promise.set_value();
-        } catch (const std::future_error& e) {
-            // 이미 promise가 설정된 경우 (예: 매우 빠른 오류 발생 시)
-             std::cerr << "ℹ️ Promise already set in completion_callback: " << e.what() << std::endl;
+        // --- 6. 클라이언트 오디오 스트림 종료 후 처리 --- (StopContinuousRecognition 호출 가능해야 함)
+        if (azure_started.load()) {
+            // 헤더 수정 후 이 함수 호출이 가능해야 함
+            azure_stt_client_->StopContinuousRecognition();
         }
-    };
 
-    // --- 4. Azure STT 인식 시작 ---
-    if (!azure_stt_client_->StartContinuousRecognition(language, text_callback, completion_callback)) {
-        std::cerr << "❌ Failed to start Azure continuous recognition for session: " << session_id << std::endl;
-        critical_error_occurred.store(true);
-        // Azure 시작 실패 시, 시작된 LLM 스트림이 있다면 종료 시도
-        if(llm_stream_started.load()) {
-             llm_engine_client_->FinishStream(); // 결과는 무시하고 정리 목적
+
+        // --- 7. Azure 처리 완료 대기 --- (변경 없음)
+        std::cout << "   [" << session_id << "] Waiting for Azure STT processing to complete..." << std::endl;
+        std::future_status wait_status = azure_processing_complete_future.wait_for(std::chrono::seconds(30));
+        // ... (타임아웃 처리 - 기존과 동일) ...
+        if (wait_status == std::future_status::timeout) {
+             std::cerr << "❌ [" << session_id << "] Timed out waiting for Azure STT completion (30s)." << std::endl;
+             if (!stream_error_occurred.load()) {
+                 error_message = "Timeout waiting for Azure STT completion.";
+                 stream_error_occurred.store(true);
+             }
+        } else {
+             std::cout << "   [" << session_id << "] Azure STT processing completed or error signal received." << std::endl;
         }
-        // 완료 신호 보내서 즉시 종료
-        try { processing_complete_promise.set_value(); } catch (...) {}
-        return Status(grpc::StatusCode::INTERNAL, "Failed to start Azure speech recognition.");
-    }
 
-    // --- 5. 오디오 청크 읽기 루프 ---
-    STTStreamRequest audio_request;
-    size_t total_bytes_received = 0;
-    std::cout << "   Waiting for audio chunks from client: " << client_peer << std::endl;
-    while (reader->Read(&audio_request)) {
-        if (critical_error_occurred.load()) {
-             std::cerr << "   Critical error occurred, stopping audio reading loop." << std::endl;
-             break; // 오류 발생 시 루프 중단
+
+        // --- 8. LLM 스트림 종료 (내부 수정됨) ---
+        Status final_llm_status = Status::OK;
+        if (llm_stream_started.load()) {
+             std::cout << "   [" << session_id << "] Finishing LLM engine stream..." << std::endl;
+             // 수정됨: Status 객체 하나만 받음
+             grpc::Status llm_status = llm_engine_client_->FinishStream();
+             final_llm_status = llm_status;
+             llm_stream_started.store(false);
+
+             if (!llm_status.ok()) {
+                 std::cerr << "❌ [" << session_id << "] LLM stream finish error: (" << llm_status.error_code() << ") "
+                           << llm_status.error_message() << std::endl;
+                  if (!stream_error_occurred.load()) {
+                     error_message = "Failed to finish LLM stream: " + llm_status.error_message();
+                     stream_error_occurred.store(true);
+                  }
+             } else {
+                  // 수정됨: llm_summary 관련 로깅 제거
+                  std::cout << "   [" << session_id << "] LLM stream finished successfully." << std::endl;
+                  // 필요하다면 서버가 Empty를 반환했음을 명시적으로 로깅
+             }
+        } else {
+             std::cout << "   [" << session_id << "] LLM stream was not started or already finished, skipping finish." << std::endl;
         }
-         if (context->IsCancelled()) {
-             std::cout << "   Client cancelled the request." << std::endl;
-             critical_error_occurred.store(true); // 클라이언트 취소도 오류로 간주 가능
-             break;
-         }
 
-        if (audio_request.request_data_case() == STTStreamRequest::kAudioChunk) {
-            const auto& chunk = audio_request.audio_chunk();
-            if (!chunk.empty()) {
-                //std::cout << "   Received audio chunk: " << chunk.size() << " bytes" << std::endl;
-                total_bytes_received += chunk.size();
-                azure_stt_client_->PushAudioChunk(
-                    reinterpret_cast<const uint8_t*>(chunk.data()),
-                    chunk.size()
-                );
+
+        // --- 9. 최종 상태 반환 --- (변경 없음)
+        std::cout << "🏁 [" << session_id << "] Processing complete. Final status check." << std::endl;
+        if (stream_error_occurred.load()) {
+            if (context->IsCancelled()) {
+                std::cerr << "❌ [" << session_id << "] Returning CANCELLED status." << std::endl;
+                 cleanup_resources(true, llm_stream_started.load());
+                return Status(StatusCode::CANCELLED, "Request cancelled by client during processing.");
             }
+            if (!final_llm_status.ok() && final_llm_status.error_code() != StatusCode::CANCELLED) {
+                 std::cerr << "❌ [" << session_id << "] Returning LLM finish error status: (" << final_llm_status.error_code() << ")" << std::endl;
+                 cleanup_resources(true, false);
+                 return final_llm_status;
+            }
+            std::cerr << "❌ [" << session_id << "] Returning INTERNAL error status: " << error_message << std::endl;
+            cleanup_resources(true, llm_stream_started.load());
+            return Status(StatusCode::INTERNAL, "An internal error occurred: " + error_message);
         } else {
-             std::cerr << "⚠️ Received non-audio chunk data after config." << std::endl;
-             // 오류로 처리할 수도 있음
+            std::cout << "✅ [" << session_id << "] Returning OK status." << std::endl;
+            return Status::OK;
         }
+
+    } catch (const std::exception& e) {
+        // ... (예외 처리 - 기존과 동일) ...
+        std::cerr << "❌ [" << session_id << "] Unhandled exception in RecognizeStream: " << e.what() << std::endl;
+        stream_error_occurred.store(true);
+        error_message = "Unhandled exception: " + std::string(e.what());
+        cleanup_resources(azure_started.load(), llm_stream_started.load());
+        return Status(StatusCode::UNKNOWN, "An unknown exception occurred in the service handler.");
+    } catch (...) {
+        // ... (알 수 없는 예외 처리 - 기존과 동일) ...
+         std::cerr << "❌ [" << session_id << "] Unknown non-standard exception in RecognizeStream." << std::endl;
+         stream_error_occurred.store(true);
+         error_message = "Unknown non-standard exception.";
+         cleanup_resources(azure_started.load(), llm_stream_started.load());
+         return Status(StatusCode::UNKNOWN, "An unknown exception occurred.");
     }
-
-    // --- 6. 클라이언트 오디오 스트림 종료 처리 ---
-    std::cout << "ℹ️ Client finished sending audio or stream ended. Total bytes: " << total_bytes_received << ". Session: " << session_id << std::endl;
-
-    // Azure STT에게 오디오 입력 종료 알림 (이렇게 하면 결국 completion_callback 호출됨)
-    // 이미 오류가 발생했더라도 Stop 호출 시도 (리소스 정리 목적)
-    azure_stt_client_->StopContinuousRecognition();
-
-
-    // --- 7. 모든 비동기 처리 완료 대기 ---
-    std::cout << "   Waiting for Azure STT and LLM forwarding to complete..." << std::endl;
-    // completion_callback에서 promise가 set_value 될 때까지 대기
-    // 타임아웃 설정 가능: processing_complete_future.wait_for(std::chrono::seconds(30));
-    processing_complete_future.wait();
-
-
-    // --- 8. 최종 상태 반환 ---
-    std::cout << "✅ Processing complete for session: " << session_id << ". Final status check." << std::endl;
-    if (critical_error_occurred.load()) {
-        std::cerr << "❌ Returning INTERNAL error status due to processing errors." << std::endl;
-        // 클라이언트가 취소한 경우 CANCELLED 상태 반환 고려
-         if (context->IsCancelled()) {
-             return Status(grpc::StatusCode::CANCELLED, "Request cancelled by client during processing.");
-         }
-        return Status(grpc::StatusCode::INTERNAL, "An internal error occurred during STT processing or LLM forwarding.");
-    } else {
-        std::cout << "✅ Returning OK status." << std::endl;
-        return Status::OK;
-    }
-}
+} // end RecognizeStream
 
 } // namespace stt

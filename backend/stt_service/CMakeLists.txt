@@ -14,6 +14,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # 필수 패키지 찾기
 find_package(Protobuf REQUIRED)
+message(STATUS "Protobuf Include Dirs: ${Protobuf_INCLUDE_DIRS}")
 find_package(PkgConfig REQUIRED)
 find_package(Threads REQUIRED)
 
@@ -38,10 +39,10 @@ message(STATUS "Found gRPC C++ Plugin: ${GRPC_CPP_PLUGIN}")
 set(SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}) # /app
 set(BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}) # /app/build
 
-# .proto 파일 경로 및 이름 정의 (stt.proto, llm_engine.proto)
-set(PROTO_SOURCE_DIR "${SOURCE_DIR}/proto") # /app/proto
+# .proto 파일 경로 및 이름 정의 (stt.proto, llm.proto)
+set(PROTO_SOURCE_DIR "${SOURCE_DIR}/protos") # /app/proto
 set(STT_PROTO_BASENAME "stt")
-set(LLM_PROTO_BASENAME "llm_engine") # llm_engine proto 추가
+set(LLM_PROTO_BASENAME "llm")
 set(STT_PROTO_FILE "${PROTO_SOURCE_DIR}/${STT_PROTO_BASENAME}.proto")
 set(LLM_PROTO_FILE "${PROTO_SOURCE_DIR}/${LLM_PROTO_BASENAME}.proto") # llm_engine proto 파일 경로
 
@@ -77,7 +78,7 @@ endif()
 message(STATUS "Using Azure Speech SDK from: ${SPEECHSDK_ROOT}")
 set(SPEECHSDK_CXX_INCLUDE_DIR "${SPEECHSDK_ROOT}/include/cxx_api")
 set(SPEECHSDK_C_INCLUDE_DIR "${SPEECHSDK_ROOT}/include/c_api")
-set(SPEECHSDK_LIBRARY_DIR "${SPEECHSDK_ROOT}/lib/x64") # Assuming x64 Linux
+set(SPEECHSDK_LIBRARY_DIR "${SPEECHSDK_ROOT}/lib/arm64") # Assuming x64 Linux
 
 # ---=[ Protobuf/gRPC 코드 생성 (Custom Command 사용) ]=---
 

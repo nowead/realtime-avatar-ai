@@ -81,9 +81,9 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # 빌더 스테이지에서 필요한 SDK 라이브러리 복사
-COPY --from=builder ${SPEECHSDK_ROOT}/lib/x64/libMicrosoft.CognitiveServices.Speech.core.so /usr/local/lib/
-COPY --from=builder ${SPEECHSDK_ROOT}/lib/x64/libpal_azure_c_shared_openssl3.so /usr/local/lib/
-COPY --from=builder ${SPEECHSDK_ROOT}/lib/x64/libMicrosoft.CognitiveServices.Speech.extension.audio.sys.so /usr/local/lib/
+COPY --from=builder ${SPEECHSDK_ROOT}/lib/arm64/libMicrosoft.CognitiveServices.Speech.core.so /usr/local/lib/
+COPY --from=builder ${SPEECHSDK_ROOT}/lib/arm64/libpal_azure_c_shared_openssl3.so /usr/local/lib/
+COPY --from=builder ${SPEECHSDK_ROOT}/lib/arm64/libMicrosoft.CognitiveServices.Speech.extension.audio.sys.so /usr/local/lib/
 # 필요시 다른 확장 라이브러리도 여기에 추가
 
 # 링커 캐시 업데이트
