@@ -1,0 +1,9 @@
+body { font-family: sans-serif; }
+#renderCanvas {
+    width: 80%;
+    height: 60vh;
+    border: 1px solid black;
+    touch-action: none; /* 모바일 터치 이벤트 처리 */
+}
+button { margin: 5px; padding: 10px; }
+#status { margin-top: 10px; font-weight: bold; }
