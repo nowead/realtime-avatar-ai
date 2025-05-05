@@ -67,12 +67,11 @@ COPY . .
 # 2. CMake 및 Make 실행 (unit_tests 타겟 빌드)
 # 3. 빌드된 unit_tests 실행
 RUN \
-    # 테스트용 CMake 파일 이름 변경하여 적용
-    mv CMakeLists.txt.test CMakeLists.txt && \
     # 빌드 디렉토리 생성 및 이동
     mkdir build && cd build && \
     echo "Running CMake with test configuration..." && \
     cmake .. \
+      -DBUILD_TESTING=ON \
       -DCMAKE_BUILD_TYPE=Debug \
       -DSPEECHSDK_ROOT=${SPEECHSDK_ROOT} \
       -DTARGET_ARCH=${TARGET_ARCH} \

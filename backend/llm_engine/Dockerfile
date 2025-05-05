@@ -7,7 +7,7 @@ FROM ubuntu:22.04 AS builder
 
 # 빌드 인자 (필요시 사용)
 ARG TARGET_ARCH
-ENV TARGET_ARCH=${TARGET_ARCH:-$(dpkg --print-architecture)} # 기본값 설정
+ENV TARGET_ARCH=${TARGET_ARCH}
 
 # Non-interactive apt-get
 ENV DEBIAN_FRONTEND=noninteractive

@@ -5,8 +5,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.external_test # Python 환경 재사용
-      args:
-        - TARGET_ARCH=${TARGET_ARCH:-amd64} # Python 이미지는 아키텍처 덜 민감
     container_name: mock-tts-server
     # Mock TTS 서버 스크립트 실행
     command: ["python", "/app/tests/mock_tts_server.py"]
@@ -24,7 +22,7 @@ services:
       context: .
       dockerfile: Dockerfile # 메인 서비스용 Dockerfile
       args:
-        - TARGET_ARCH=${TARGET_ARCH:-amd64} # 빌드할 아키텍처 지정
+        - TARGET_ARCH=${TARGET_ARCH}
     container_name: llm-engine-service
     env_file:
       - .env # .env 파일에서 환경 변수 로드 (OPENAI_API_KEY 등)
@@ -46,8 +44,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.external_test # Python 환경 재사용
-      args:
-        - TARGET_ARCH=${TARGET_ARCH:-amd64}
     container_name: test-llm-client
     environment:
       # 테스트 대상 LLM 서비스 주소 설정 (Docker 내부 네트워크 사용)
