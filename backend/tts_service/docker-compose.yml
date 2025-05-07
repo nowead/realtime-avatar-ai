@@ -31,13 +31,10 @@ services:
       dockerfile: Dockerfile # 메인 TTS 서비스 Dockerfile
       args:
         TARGET_ARCH: ${TARGET_ARCH:-amd64} # Makefile에서 전달되는 TARGET_ARCH 사용
-        BUILD_TESTING_ARG: "OFF" # 일반 서비스 빌드 시 유닛 테스트 빌드 안함
     container_name: tts-service
-    # .env 파일은 Makefile에서 docker compose 실행 시 --env-file 옵션으로 전달
-    # env_file:
-    #   - .env
+    env_file:
+      - .env
     environment:
-      # AZURE_SPEECH_KEY, AZURE_SPEECH_REGION는 --env-file 통해 주입됨
       - AVATAR_SYNC_SERVICE_ADDRESS=mock-avatar-sync:50053 # Mock 서버의 서비스 이름과 내부 포트
       - TTS_SERVER_ADDRESS=0.0.0.0:50052                  # 컨테이너 내부 리스닝 주소
       - TARGET_ARCH=${TARGET_ARCH:-amd64}                 # 실행 환경에서도 TARGET_ARCH 필요시 사용
@@ -87,17 +84,16 @@ services:
     # 여기서는 컨테이너가 실행될 때 기본적으로 대기하도록 하거나, 테스트 스크립트 직접 실행
     command: >
       sh -c "
-        echo 'Test client for TTS service started. Waiting for test execution command from Makefile...';
-        # Makefile에서 docker compose exec test-client-tts pytest ... 와 같이 실행하거나
-        # 또는 아래처럼 직접 실행 (Makefile의 --exit-code-from 로직과 연동)
+        echo 'Test client for TTS service started. Image /app/tests content:';
         echo 'Running Pytest for TTS...';
-        sleep 5; # 서비스 안정화 대기
-        pytest /app/tests/external_integration_test.py -v -s --junitxml=/app/tests/report.xml || exit 1;
+        mkdir -p /app/test_output; # 리포트 저장 디렉토리 생성
+        pytest /app/tests/external_integration_test.py -v -s --junitxml=/app/test_output/report.xml || exit 1;
         echo 'Pytest for TTS finished.';
       "
     volumes:
-      - ./test_results:/app/tests # 테스트 결과 리포트 저장용 (Makefile에서 활용)
-
+      # 테스트 스크립트가 있는 /app/tests를 덮어쓰지 않도록 수정
+      # 대신, 테스트 결과가 저장될 디렉토리를 마운트
+      - ./test_results:/app/test_output
 networks:
   tts_test_net:
     driver: bridge

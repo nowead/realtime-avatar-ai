@@ -1,39 +1,47 @@
-# Dockerfile for Python-based external integration tests for TTS Service
+# 1. 기본 이미지 선택 (Python 버전은 프로젝트에 맞게 조정)
+FROM python:3.10-slim
 
-FROM python:3.9-slim
+# 2. 빌드 인자 (타겟 아키텍처)
+ARG TARGET_ARCH
+ENV TARGET_ARCH=${TARGET_ARCH}
 
-# 필요한 시스템 라이브러리 설치 (gRPC Python 의존성 등)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    # Python gRPC 빌드에 필요할 수 있음
-    # python3-dev libpython3-dev \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
+# 3. 작업 디렉토리 설정
 WORKDIR /app
 
-# requirements.txt 또는 필요한 Python 패키지 설치
-# grpcio, grpcio-tools, protobuf, pytest, requests (필요시)
-COPY protos/ /app/protos/
-COPY tests/requirements_test.txt /app/
-RUN pip install --no-cache-dir -r requirements_test.txt
+# 4. 시스템 의존성 설치 (필요한 경우)
+# 예: 컴파일러, libffi-dev (특정 Python 패키지 설치 시 필요할 수 있음)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+ && rm -rf /var/lib/apt/lists/*
 
-# gRPC 코드 생성 (Python 용)
-# .proto 파일들이 /app/protos/ 에 있다고 가정
+# 5. Python gRPC 도구 설치 (proto 파일 컴파일용)
+# requirements.txt 에 grpcio-tools, protobuf 가 포함되어 있다면 이 단계는 생략 가능
+# 또는 여기서 직접 설치하여 proto 컴파일 후 requirements.txt 설치
+RUN pip install --no-cache-dir grpcio-tools protobuf
+
+# 6. Proto 파일 복사 및 Python 코드 생성
+#    tts.proto 와 avatar_sync.proto 를 사용한다고 가정
+COPY protos/ /app/protos/
 RUN python -m grpc_tools.protoc \
-    -I./protos \
+    -I/app/protos \
     --python_out=. \
     --grpc_python_out=. \
-    ./protos/tts.proto ./protos/avatar_sync.proto \
-    # google/protobuf/empty.proto, timestamp.proto는 일반적으로 grpcio-tools와 함께 제공됨
-    # 필요시 googleapis/googleapis 에서 가져와서 함께 컴파일
+    /app/protos/tts.proto /app/protos/avatar_sync.proto
+# 생성된 파일: tts_pb2.py, tts_pb2_grpc.py, avatar_sync_pb2.py, avatar_sync_pb2_grpc.py
+# 이 파일들은 /app 디렉토리에 생성됩니다.
 
-# 테스트 코드 복사
+# 7. 테스트 관련 파일 복사
 COPY tests/ /app/tests/
 
-# 샘플 오디오 파일 등 테스트에 필요한 리소스 복사 (필요시)
-# COPY tests/sample.txt /app/sample.txt
+# 8. 테스트에 필요한 Python 패키지 설치
+#    tests/requirement.txt 에 pytest, grpcio, Flask 등이 명시되어 있어야 함
+RUN pip install --no-cache-dir -r /app/tests/requirement.txt
 
-# 기본 실행 명령어 (테스트 실행)
-# 실제 명령어는 docker-compose.yml 에서 오버라이드 가능
-CMD ["pytest", "/app/tests/external_integration_test.py", "-v", "-s"]
+# 9. PYTHONPATH 설정 (생성된 gRPC 코드 및 테스트 모듈 임포트용)
+#    /app 디렉토리를 PYTHONPATH에 추가하여 모든 Python 스크립트가
+#    tts_pb2, avatar_sync_pb2, 그리고 tests 하위 모듈을 찾을 수 있도록 함.
+ENV PYTHONPATH="/app:${PYTHONPATH}"
+
+# 10. (선택) 컨테이너 실행 시 기본 명령어 설정
+#     docker-compose.yml 에서 command 를 오버라이드하므로 필수 아님
+# CMD ["pytest", "/app/tests/external_integration_test.py"]

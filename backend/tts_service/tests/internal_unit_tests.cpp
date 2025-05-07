@@ -15,8 +15,8 @@
 #include "tts.pb.h"             // SynthesisConfig 사용
 
 // AzureTTSEngine 테스트를 위한 환경 변수 (실제 키/지역 필요, CI에서는 Mock 사용 권장)
-const char* azure_key_env_test = std::getenv("AZURE_SPEECH_KEY_TEST");
-const char* azure_region_env_test = std::getenv("AZURE_SPEECH_REGION_TEST");
+const char* azure_key_env_test = std::getenv("AZURE_SPEECH_KEY");
+const char* azure_region_env_test = std::getenv("AZURE_SPEECH_REGION");
 
 // --- AvatarSyncClient Constructor Test ---
 TEST(TTSInternalClientTest, AvatarSyncClientConstructor_InvalidAddress) {

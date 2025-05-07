@@ -67,7 +67,7 @@ build-external-test:
 	@echo "🧪 Building External Test Client image (${EXTERNAL_TEST_IMAGE_NAME}) for TARGET_ARCH: ${TARGET_ARCH}..."
 	docker build \
 		--build-arg TARGET_ARCH=${TARGET_ARCH} \
-		-t ${EXTERNAL_TEST_IMAGE_NAME}:latest \
+		-t ${EXTERNAL_TEST_IMAGE_NAME} \
 		-f ${EXTERNAL_TEST_DOCKERFILE} . --no-cache
 
 # C++ 유닛 테스트 실행 (Docker 내부에서 빌드 및 실행)
@@ -77,7 +77,7 @@ build-external-test:
 unit-test: build-unit-test
 	@echo "🧪 Running Unit Tests inside the container..."
 	# unit_tests 실행 파일이 /app/build/unit_tests 에 생성된다고 가정 (CMakeLists.txt 설정에 따라 다름)
-	docker run --rm ${UNIT_TEST_IMAGE_NAME}
+	docker run --rm  --env-file ${ENV_FILE} ${UNIT_TEST_IMAGE_NAME}
 	@echo "🧪 Unit Tests completed. Check the output above for results."
 
 # 외부 통합 테스트 실행 (Docker Compose 사용)
@@ -98,7 +98,7 @@ test: external-test
 # 서비스 시작 (detached mode)
 start:
 	@echo "🚀 Starting TTS service and Mock AvatarSync service in detached mode (TARGET_ARCH: ${TARGET_ARCH})..."
-	TARGET_ARCH=${TARGET_ARCH} docker compose -f ${COMPOSE_FILE} --env-file ${ENV_FILE} up -d --build tts-service mock-avatar-sync
+	TARGET_ARCH=${TARGET_ARCH} docker compose -f ${COMPOSE_FILE} --env-file ${ENV_FILE} up -d --build tts-service
 	@echo "✅ Services started. Use 'make logs' or 'make stop'."
 
 # 서비스 중지 및 컨테이너 제거
@@ -116,12 +116,11 @@ clean:
 	-TARGET_ARCH=${TARGET_ARCH} docker compose -f ${COMPOSE_FILE} --env-file ${ENV_FILE} down -v --remove-orphans
 	@echo "🧹 Cleaning up local build artifacts (./build, ./build_unit_test, ./test_results)..."
 	rm -rf build
-	rm -rf ${UNIT_TEST_BUILD_DIR}
 	rm -rf test_results
 	@echo "🧹 Removing Docker images (tts-service, tts-test-external)..."
-	-docker rmi ${TTS_IMAGE_NAME}:latest ${TTS_IMAGE_NAME}:unit-test ${EXTERNAL_TEST_IMAGE_NAME}:latest
+	-docker rmi ${TTS_IMAGE_NAME} ${UNIT_TEST_IMAGE_NAME} ${EXTERNAL_TEST_IMAGE_NAME}
 	@echo "🧹 Pruning unused Docker data (optional, be careful)..."
-	# -docker system prune -af # 주석 처리: 사용 시 주의
+	-docker system prune -af # 주석 처리: 사용 시 주의
 	@echo "✅ Cleanup attempt complete."
 
 # 실행 중인 서비스 로그 확인

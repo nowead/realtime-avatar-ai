@@ -88,5 +88,4 @@ RUN echo "Copying Speech SDK runtime libraries for ${TARGET_ARCH}..." && \
     ldconfig
 
 WORKDIR /app/build      # 테스트 실행 파일이 있는 빌드 디렉토리로 이동
-# CMD ["./unit_tests"]
 ENTRYPOINT ["/app/build/unit_tests"]
