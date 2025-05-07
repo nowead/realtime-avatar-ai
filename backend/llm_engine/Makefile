@@ -46,7 +46,6 @@ build-llm:
 build-unit-test:
 	@echo "🧪 Building Unit Test image (${UNIT_TEST_IMAGE_NAME})..."
 	docker build \
-		--build-arg TARGET_ARCH=${TARGET_ARCH} \
 		-t ${UNIT_TEST_IMAGE_NAME} \
 		-f ${UNIT_TEST_DOCKERFILE} . --no-cache
 

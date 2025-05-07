@@ -1,43 +1,37 @@
 #include "tts_client.h"
+
+#include <vector>
+#include <cstdint>
 #include <iostream>
-#include <stdexcept> // For runtime_error
+#include <chrono>
+#include <stdexcept>
 
 namespace llm_engine {
 
-TTSClient::TTSClient(const std::string& server_address)
-  : server_address_(server_address) {
-    try {
-        channel_ = grpc::CreateChannel(server_address, grpc::InsecureChannelCredentials());
-        if (!channel_) {
-            throw std::runtime_error("Failed to create gRPC channel to TTS service at " + server_address);
-        }
-        stub_ = TTSService::NewStub(channel_);
-        if (!stub_) {
-            throw std::runtime_error("Failed to create TTSService::Stub.");
-        }
-    } catch (const std::exception& e) {
-        std::cerr << "❌ Exception in TTSClient constructor: " << e.what() << std::endl;
-        throw; // Re-throw
+// 실제 채널을 사용하는 생성자
+TTSClient::TTSClient(std::shared_ptr<grpc::Channel> channel)
+    : channel_(channel) {
+    if (!channel_) {
+        throw std::runtime_error("TTSClient: Provided gRPC channel is null.");
     }
-    std::cout << "TTSClient initialized for address: " << server_address << std::endl;
+    // 실제 서비스 이름 TTSService 사용
+    stub_ = TTSService::NewStub(channel_);
+    if (!stub_) {
+        throw std::runtime_error("TTSClient: Failed to create TTSService::Stub.");
+    }
+    std::cout << "TTSClient initialized with real gRPC channel." << std::endl;
 }
 
-TTSClient::~TTSClient() {
-    std::cout << "ℹ️ Destroying TTSClient..." << std::endl;
-    if (IsStreamActive()) {
-        std::cerr << "⚠️ WARNING: TTSClient destroyed while stream was active for session ["
-                  << session_id_ << "]. Attempting to finish stream..." << std::endl;
-        try {
-            FinishStream(); // Ignore status, just try to clean up
-        } catch (const std::exception& e) {
-            std::cerr << "   Exception during TTSClient cleanup in destructor: " << e.what() << std::endl;
-        }
+// 테스트용 Stub을 사용하는 생성자
+TTSClient::TTSClient(std::shared_ptr<TTSService::StubInterface> stub) // 실제 서비스 이름 사용
+    : stub_(stub) {
+    if (!stub_) {
+        throw std::runtime_error("TTSClient: Provided gRPC stub is null.");
     }
-    stub_.reset();
-    channel_.reset();
-    std::cout << "✅ TTSClient destroyed." << std::endl;
+    std::cout << "TTSClient initialized with provided stub (for testing)." << std::endl;
 }
 
+// 스트림 시작 함수
 bool TTSClient::StartStream(const std::string& session_id, const std::string& language_code, const std::string& voice_name) {
     std::lock_guard<std::mutex> lock(stream_mutex_);
 
@@ -45,134 +39,135 @@ bool TTSClient::StartStream(const std::string& session_id, const std::string& la
         std::cerr << "⚠️ TTS Client: StartStream called while another stream [" << session_id_ << "] is already active." << std::endl;
         return false;
     }
-     if (session_id.empty() || language_code.empty() || voice_name.empty()) {
-         std::cerr << "❌ TTS Client: StartStream called with empty session_id, language_code, or voice_name." << std::endl;
+    if (session_id.empty() || language_code.empty()) {
+        std::cerr << "❌ TTS Client: StartStream called with empty session_id or language_code." << std::endl;
+        return false;
+    }
+    if (!stub_) {
+         std::cerr << "❌ TTS Client: StartStream called but stub_ is null." << std::endl;
          return false;
-     }
+    }
 
-    session_id_ = session_id; // Store for logging
+    session_id_ = session_id;
     std::cout << "⏳ TTS Client: Starting stream for session [" << session_id_ << "]..." << std::endl;
 
     context_ = std::make_unique<ClientContext>();
-    // Set a deadline if needed:
-    // std::chrono::system_clock::time_point deadline = std::chrono::system_clock::now() + std::chrono::seconds(60);
+    // 필요시 deadline 설정
+    // auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(30);
     // context_->set_deadline(deadline);
 
+    // SynthesizeStream RPC 호출 (TTSService::StubInterface 사용)
     stream_ = stub_->SynthesizeStream(context_.get(), &server_response_);
 
     if (!stream_) {
         std::cerr << "❌ TTS Client: Failed to initiate gRPC stream to TTS engine for session [" << session_id_ << "]." << std::endl;
-        context_.reset(); // Clean up context
+        context_.reset();
         session_id_.clear();
         return false;
     }
 
-    // Send the initial SynthesisConfig message
+    // 초기 SynthesisConfig 메시지 전송
     std::cout << "   TTS Client: Sending initial SynthesisConfig for session [" << session_id_ << "]..." << std::endl;
-    TTSStreamRequest config_request;
-    SynthesisConfig* config = config_request.mutable_config();
+    TTSStreamRequest config_request; // 네임스페이스 불필요 (using 선언됨)
+    SynthesisConfig* config = config_request.mutable_config(); // 네임스페이스 불필요 (using 선언됨)
     config->set_session_id(session_id_);
     config->set_language_code(language_code);
     config->set_voice_name(voice_name);
-    // Set other config fields if necessary
 
     if (!stream_->Write(config_request)) {
         std::cerr << "❌ TTS Client: Failed to write initial SynthesisConfig for session [" << session_id_ << "]. Finishing stream." << std::endl;
-        // Attempt to finish the stream immediately on write failure
-        stream_->Finish(); // Get status, but mainly signal end
-        stream_.reset();  // Release stream resources
-        context_.reset(); // Release context resources
+        grpc::Status finish_status = stream_->Finish(); // 스트림 종료 시도
+        if (!finish_status.ok()) {
+             std::cerr << "   TTS Client: Finish() also failed after config write failure. Status: ("
+                       << finish_status.error_code() << ") " << finish_status.error_message() << std::endl;
+        }
+        stream_.reset();
+        context_.reset();
         session_id_.clear();
-        stream_active_.store(false); // Mark as inactive
+        stream_active_.store(false);
         return false;
     }
 
-    stream_active_.store(true); // Mark stream as active *after* successful config write
+    stream_active_.store(true);
     std::cout << "✅ TTS Client: Stream successfully started and SynthesisConfig sent for session [" << session_id_ << "]." << std::endl;
     return true;
 }
 
+// 텍스트 청크 전송 함수
 bool TTSClient::SendTextChunk(const std::string& text) {
-    if (!IsStreamActive()) { // Check activity status first
-        std::cerr << "⚠️ TTS Client: SendTextChunk called but stream is not active for session [" << session_id_ << "]." << std::endl;
+    if (!IsStreamActive()) { // 내부적으로 뮤텍스 사용
+        // std::cerr << "⚠️ TTS Client: SendTextChunk called but stream is not active for session [" << session_id_ << "]." << std::endl; // 로그 줄임
         return false;
     }
 
-    TTSStreamRequest request;
-    request.set_text_chunk(text); // Set the text_chunk field
+    TTSStreamRequest request; // 네임스페이스 불필요 (using 선언됨)
+    request.set_text_chunk(text);
 
     bool write_ok = false;
     {
         std::lock_guard<std::mutex> lock(stream_mutex_);
-        // Check stream validity again inside the lock
         if (stream_) {
-             // std::cout << "   TTS Client: Sending chunk (session=" << session_id_ << "): '" << text.substr(0, 50) << "...'" << std::endl;
             write_ok = stream_->Write(request);
         } else {
-            // Stream might have been closed between IsStreamActive check and here
             write_ok = false;
-            std::cerr << "⚠️ TTS Client: Stream became invalid before writing chunk for session [" << session_id_ << "]." << std::endl;
+            // std::cerr << "⚠️ TTS Client: Stream became invalid before writing chunk for session [" << session_id_ << "]." << std::endl; // 로그 줄임
         }
-    } // Lock released here
+    } // 뮤텍스 락 해제
 
     if (!write_ok) {
-        std::cerr << "❌ TTS Client: Failed to write text chunk to TTS engine stream for session [" << session_id_ << "]. Marking as inactive." << std::endl;
-        // Don't reset stream_ here, let FinishStream handle the final state retrieval
-        stream_active_.store(false); // Mark as inactive on write failure
-        return false;
+        // std::cerr << "❌ TTS Client: Failed to write text chunk to TTS engine stream for session [" << session_id_ << "]. Marking as inactive." << std::endl; // 로그 줄임
+        stream_active_.store(false); // 쓰기 실패 시 비활성 상태로 표시
     }
-    return true;
+    return write_ok;
 }
 
+// 스트림 종료 함수
 Status TTSClient::FinishStream() {
     std::lock_guard<std::mutex> lock(stream_mutex_);
 
     if (!stream_active_.load() || !stream_) {
-        std::cerr << "⚠️ TTS Client: FinishStream called but stream is not active or already finished for session [" << session_id_ << "]." << std::endl;
-         // If stream is already null, assume it was finished or failed earlier.
-         // If only inactive, return FAILED_PRECONDITION.
+         // std::cerr << "⚠️ TTS Client: FinishStream called but stream is not active or already finished for session [" << session_id_ << "]." << std::endl; // 로그 줄임
          return stream_ ? Status(grpc::StatusCode::FAILED_PRECONDITION, "Stream not active")
-                       : Status(grpc::StatusCode::OK, "Stream already finished or failed"); // Or choose appropriate error
+                        : Status::OK; // 이미 종료된 경우 OK 반환 (또는 다른 상태)
     }
 
     std::cout << "⏳ TTS Client: Finishing stream for session [" << session_id_ << "]..." << std::endl;
 
-    // Signal that no more messages will be sent
+    // 더 이상 메시지 전송 안 함 알림
     bool writes_done_ok = stream_->WritesDone();
     if (!writes_done_ok) {
-        // This might happen if the stream was already broken (e.g., server died)
         std::cerr << "⚠️ TTS Client: WritesDone failed on TTS stream for session [" << session_id_ << "]. Stream might be broken." << std::endl;
-        // Proceed to Finish() anyway to get the final status
     } else {
-        std::cout << "   TTS Client: WritesDone called successfully for session [" << session_id_ << "]." << std::endl;
+        // std::cout << "   TTS Client: WritesDone called successfully for session [" << session_id_ << "]." << std::endl; // 로그 줄임
     }
 
-    // Wait for the server to process all messages and return the final status
+    // 서버로부터 최종 상태 받기 (google.protobuf.Empty 반환)
     std::cout << "   TTS Client: Waiting for final status (Finish) from TTS server for session [" << session_id_ << "]..." << std::endl;
     Status status = stream_->Finish();
 
-    // Clean up resources associated with this stream
+    // 리소스 정리
     stream_.reset();
     context_.reset();
     stream_active_.store(false);
-    std::string finished_session_id = session_id_; // Copy before clearing
+    std::string finished_session_id = session_id_;
     session_id_.clear();
 
-
     if (status.ok()) {
-        std::cout << "✅ TTS Client: Stream finished successfully for session [" << finished_session_id << "]. Server returned Empty." << std::endl;
+        std::cout << "✅ TTS Client: Stream finished successfully for session [" << finished_session_id << "]." << std::endl;
     } else {
         std::cerr << "❌ TTS Client: Stream finished with error for session [" << finished_session_id
                   << "]. Status: (" << status.error_code() << "): " << status.error_message() << std::endl;
     }
 
-    return status; // Return the final status
+    return status;
 }
 
+// 스트림 활성 상태 확인 함수
 bool TTSClient::IsStreamActive() const {
     std::lock_guard<std::mutex> lock(stream_mutex_);
-    // Stream is active if the flag is set AND the stream pointer is valid
     return stream_active_.load() && (stream_ != nullptr);
 }
+
+// SynthesizeSpeech 함수 제거 (proto에 해당 RPC 없음)
 
 } // namespace llm_engine

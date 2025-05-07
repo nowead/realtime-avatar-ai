@@ -1,62 +1,55 @@
-#pragma once
+// llm_engine/src/tts_client.h
 
-#include <string>
+#ifndef TTS_CLIENT_H
+#define TTS_CLIENT_H
+
 #include <memory>
+#include <string>
+#include <vector>
 #include <mutex>
 #include <atomic>
-
 #include <grpcpp/grpcpp.h>
 #include <google/protobuf/empty.pb.h>
-#include "tts.grpc.pb.h" // Include generated TTS proto code
+
+#include "tts.grpc.pb.h"
 
 namespace llm_engine {
 
-// Using declarations for convenience
+using grpc::Channel;
+using grpc::ClientContext;
+// === using 선언 수정 ===
+using grpc::ClientWriterInterface; // ClientWriter 대신 ClientWriterInterface 사용
+using grpc::Status;
+// === tts 네임스페이스 ===
 using tts::TTSService;
 using tts::TTSStreamRequest;
 using tts::SynthesisConfig;
-using grpc::Channel;
-using grpc::ClientContext;
-using grpc::ClientWriter;
-using grpc::Status;
 
 class TTSClient {
 public:
-    explicit TTSClient(const std::string& server_address);
-    ~TTSClient();
+    explicit TTSClient(std::shared_ptr<Channel> channel);
+    explicit TTSClient(std::shared_ptr<TTSService::StubInterface> stub);
 
-    // Deleted copy/move constructors and assignment operators
-    TTSClient(const TTSClient&) = delete;
-    TTSClient& operator=(const TTSClient&) = delete;
-    TTSClient(TTSClient&&) = delete;
-    TTSClient& operator=(TTSClient&&) = delete;
-
-    // Starts the gRPC stream to the TTS service
     bool StartStream(const std::string& session_id, const std::string& language_code, const std::string& voice_name);
-
-    // Sends a text chunk to the TTS service
     bool SendTextChunk(const std::string& text);
-
-    // Finishes the gRPC stream and returns the final status from TTS service
     Status FinishStream();
-
-    // Checks if the stream is currently active
     bool IsStreamActive() const;
 
+    // SynthesizeSpeech 함수 제거됨
+
 private:
+    std::shared_ptr<TTSService::StubInterface> stub_;
     std::string server_address_;
-    std::string session_id_; // Store session ID for logging/debugging
-
-    std::shared_ptr<Channel> channel_;
-    std::unique_ptr<TTSService::Stub> stub_;
-
-    // Per-stream resources
-    std::unique_ptr<ClientContext> context_;
-    std::unique_ptr<ClientWriter<TTSStreamRequest>> stream_;
-    google::protobuf::Empty server_response_; // TTS returns Empty
-
+    std::string session_id_;
+    std::shared_ptr<grpc::Channel> channel_;
+    std::unique_ptr<grpc::ClientContext> context_;
+    // === stream_ 멤버 변수 타입 확인 (ClientWriterInterface 사용) ===
+    std::unique_ptr<ClientWriterInterface<TTSStreamRequest>> stream_; // 이제 using 선언과 일치
+    google::protobuf::Empty server_response_;
     mutable std::mutex stream_mutex_;
     std::atomic<bool> stream_active_{false};
 };
 
 } // namespace llm_engine
+
+#endif // TTS_CLIENT_H
