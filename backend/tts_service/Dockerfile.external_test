@@ -1,0 +1,39 @@
+# Dockerfile for Python-based external integration tests for TTS Service
+
+FROM python:3.9-slim
+
+# 필요한 시스템 라이브러리 설치 (gRPC Python 의존성 등)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    # Python gRPC 빌드에 필요할 수 있음
+    # python3-dev libpython3-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# requirements.txt 또는 필요한 Python 패키지 설치
+# grpcio, grpcio-tools, protobuf, pytest, requests (필요시)
+COPY protos/ /app/protos/
+COPY tests/requirements_test.txt /app/
+RUN pip install --no-cache-dir -r requirements_test.txt
+
+# gRPC 코드 생성 (Python 용)
+# .proto 파일들이 /app/protos/ 에 있다고 가정
+RUN python -m grpc_tools.protoc \
+    -I./protos \
+    --python_out=. \
+    --grpc_python_out=. \
+    ./protos/tts.proto ./protos/avatar_sync.proto \
+    # google/protobuf/empty.proto, timestamp.proto는 일반적으로 grpcio-tools와 함께 제공됨
+    # 필요시 googleapis/googleapis 에서 가져와서 함께 컴파일
+
+# 테스트 코드 복사
+COPY tests/ /app/tests/
+
+# 샘플 오디오 파일 등 테스트에 필요한 리소스 복사 (필요시)
+# COPY tests/sample.txt /app/sample.txt
+
+# 기본 실행 명령어 (테스트 실행)
+# 실제 명령어는 docker-compose.yml 에서 오버라이드 가능
+CMD ["pytest", "/app/tests/external_integration_test.py", "-v", "-s"]

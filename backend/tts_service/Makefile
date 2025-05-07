@@ -1,115 +1,164 @@
-# --- 변수 정의 ---
-MAKE			?= make # Make 명령어 자체를 참조할 때 사용 (재귀적 호출 등)
-COMPOSE			= docker compose
-COMPOSE_FILE	?= docker-compose.yml
-service			?=
+# Makefile for tts_service
 
-# --- 테스트 관련 변수 ---
-# 테스트 클라이언트가 생성하는 오디오 파일 경로 (호스트 기준)
-TEST_OUTPUT_FILE = ./tests/output_stream.pcm
-# ffplay 재생 명령어 및 옵션
-# -autoexit: 재생 완료 시 자동 종료
-# -nodisp: 비디오 디스플레이 창 표시 안함 (오디오만 재생 시)
-# -f s16le: 포맷 (signed 16-bit little-endian)
-# -ar 16000: 샘플링 속도 (16kHz)
-# -ac 1: 채널 (모노)
-PLAY_COMMAND = ffplay -autoexit -nodisp -f s16le -ar 16000 -ac 1
+# === Variables ===
 
-# --- 빌드 ---
+# 아키텍처 설정: 기본은 시스템 감지, 사용자 지정 가능 (예: make TARGET_ARCH=x64)
+# uname -m 결과에 따라 x64 또는 arm64로 설정
+TARGET_ARCH ?= $(shell uname -m)
+
+ifeq ($(TARGET_ARCH),x86_64)
+    TARGET_ARCH := x64
+else ifeq ($(TARGET_ARCH),aarch64)
+    TARGET_ARCH := arm64
+else ifeq ($(TARGET_ARCH),arm64)
+    TARGET_ARCH := arm64
+else
+    $(warning "Unsupported architecture: $(TARGET_ARCH). Falling back to x64.")
+    TARGET_ARCH := x64
+endif
+
+# Docker 이미지 및 파일 이름 설정
+TTS_IMAGE_NAME := tts-service
+TTS_DOCKERFILE := Dockerfile  # 메인 TTS 서비스 Dockerfile
+
+# 유닛 테스트용 Dockerfile은 별도로 정의하지 않음 (메인 Dockerfile에서 BUILD_TESTING=ON으로 빌드)
+# 필요하다면 Dockerfile.unit_test 와 같이 별도 정의 가능
+UNIT_TEST_IMAGE_NAME := tts-unit-test # 유닛 테스트용 Docker 이미지 이름
+UNIT_TEST_DOCKERFILE := Dockerfile.unit_test # 유닛 테스트용 Dockerfile
+
+# 외부 통합 테스트용 이미지 및 Dockerfile (Python 테스트 환경)
+EXTERNAL_TEST_IMAGE_NAME := tts-test-external
+EXTERNAL_TEST_DOCKERFILE := Dockerfile.external_test
+
+# Docker Compose 파일
+COMPOSE_FILE := docker-compose.yml
+
+# .env 파일 (API 키 및 리전 정보 포함)
+ENV_FILE := .env
+
+# === Targets ===
+
+.PHONY: all build build-tts build-external-test unit-test external-test start stop down clean logs help
+
 all: build
+	@echo "✅ Default target 'all' (build) completed."
 
-# 모든 서비스 빌드
-build: build-tts build-test
-	@echo "--- ✅ 모든 서비스 빌드 완료 ---"
+# 메인 서비스 및 테스트 클라이언트 이미지 빌드
+build: build-tts #build-external-test
+	@echo "✅ All required Docker images built successfully."
 
-# tts-service만 빌드
+# TTS 서비스 Docker 이미지 빌드
 build-tts:
-	@echo "--- 🔨 TTS 서비스 빌드 ---"
-	$(COMPOSE) -f $(COMPOSE_FILE) build tts-service
-	@echo "--- ✅ TTS 빌드 완료 ---"
+	@echo "🚀 Building TTS Service image (${TTS_IMAGE_NAME}) for TARGET_ARCH: ${TARGET_ARCH}..."
+	docker build \
+		--build-arg TARGET_ARCH=${TARGET_ARCH} \
+		-t ${TTS_IMAGE_NAME} \
+		-f ${TTS_DOCKERFILE} . --no-cache
 
-# test-client만 빌드
-build-test:
-	@echo "--- 🔨 테스트 클라이언트 빌드 ---"
-	$(COMPOSE) -f $(COMPOSE_FILE) build --no-cache test-client
-	@echo "--- ✅ 테스트 클라이언트 빌드 완료 ---"
+build-unit-test:
+	@echo "🧪 Building Unit Test image (${TTS_IMAGE_NAME}-unit-test) for TARGET_ARCH: ${TARGET_ARCH}..."
+	docker build \
+		--build-arg TARGET_ARCH=${TARGET_ARCH} \
+		-t ${UNIT_TEST_IMAGE_NAME} \
+		-f ${UNIT_TEST_DOCKERFILE} . --no-cache
 
-# --- 실행/중지 ---
+# 외부 통합 테스트용 Python 클라이언트 이미지 빌드
+build-external-test:
+	@echo "🧪 Building External Test Client image (${EXTERNAL_TEST_IMAGE_NAME}) for TARGET_ARCH: ${TARGET_ARCH}..."
+	docker build \
+		--build-arg TARGET_ARCH=${TARGET_ARCH} \
+		-t ${EXTERNAL_TEST_IMAGE_NAME}:latest \
+		-f ${EXTERNAL_TEST_DOCKERFILE} . --no-cache
 
-up:
-	@echo "--- 🚀 서비스 시작 중 ---"
-	$(COMPOSE) -f $(COMPOSE_FILE) up -d --remove-orphans
-	@echo "--- ✅ 서비스 시작 완료 ---"
+# C++ 유닛 테스트 실행 (Docker 내부에서 빌드 및 실행)
+# 이 방식은 Dockerfile 내에서 테스트를 빌드하고 실행하는 단계를 포함해야 함.
+# 또는, 로컬에서 빌드 후 실행 파일을 컨테이너에 복사하여 실행.
+# 여기서는 Dockerfile 내에서 BUILD_TESTING=ON으로 빌드하고, 해당 컨테이너를 실행하여 테스트.
+unit-test: build-unit-test
+	@echo "🧪 Running Unit Tests inside the container..."
+	# unit_tests 실행 파일이 /app/build/unit_tests 에 생성된다고 가정 (CMakeLists.txt 설정에 따라 다름)
+	docker run --rm ${UNIT_TEST_IMAGE_NAME}
+	@echo "🧪 Unit Tests completed. Check the output above for results."
 
-restart:
-	@echo "--- 🔁 서비스 재시작 ---"
-	$(COMPOSE) -f $(COMPOSE_FILE) restart $(SERVICE)
-	@echo "--- ✅ 재시작 완료 ---"
+# 외부 통합 테스트 실행 (Docker Compose 사용)
+# test-client-tts 서비스가 테스트를 실행하고 결과를 반환
+external-test: build-tts build-external-test
+	@echo "📊 Running integration tests via Docker Compose (TARGET_ARCH: ${TARGET_ARCH})..."
+	@echo "Ensure your .env file is configured with AZURE_SPEECH_KEY and AZURE_SPEECH_REGION."
+	# TARGET_ARCH를 docker-compose up 명령어에 환경 변수로 전달
+	TARGET_ARCH=${TARGET_ARCH} docker compose -f ${COMPOSE_FILE} --env-file ${ENV_FILE} up \
+		--build \
+		--abort-on-container-exit \
+		--exit-code-from test-client-tts
+	@echo "📊 Integration tests completed. Use 'make down' or 'make logs' for details."
 
-stop:
-	@echo "--- ⛔ 서비스 중지 ---"
-	$(COMPOSE) -f $(COMPOSE_FILE) stop $(SERVICE)
-	@echo "--- ✅ 중지 완료 ---"
+# 별칭: test -> external-test (stt_service Makefile 참고)
+test: external-test
 
-# --- 완전 삭제 ---
+# 서비스 시작 (detached mode)
+start:
+	@echo "🚀 Starting TTS service and Mock AvatarSync service in detached mode (TARGET_ARCH: ${TARGET_ARCH})..."
+	TARGET_ARCH=${TARGET_ARCH} docker compose -f ${COMPOSE_FILE} --env-file ${ENV_FILE} up -d --build tts-service mock-avatar-sync
+	@echo "✅ Services started. Use 'make logs' or 'make stop'."
 
+# 서비스 중지 및 컨테이너 제거
 down:
-	@echo "--- 💣 모든 Docker Compose 리소스 삭제 중 ---"
-	$(COMPOSE) -f $(COMPOSE_FILE) down --volumes --remove-orphans --rmi all
-	docker system prune -af --volumes --filter "label=stage=tts-service" --filter "label=stage=test-client" || true
-	@echo "--- 🧹 컨테이너/네트워크/볼륨 정리 완료 ---"
+	@echo "🛑 Stopping and removing services defined in ${COMPOSE_FILE}..."
+	TARGET_ARCH=${TARGET_ARCH} docker compose -f ${COMPOSE_FILE} --env-file ${ENV_FILE} down -v --remove-orphans
+	@echo "✅ Services stopped and removed."
 
-# --- 테스트 및 재생 ---
+# 서비스 중지 (down의 별칭)
+stop: down
 
-test: up ## 테스트 실행 후 결과 오디오 자동 재생
-	@echo "--- ▶️ 테스트 클라이언트 실행 ---"
-	# 테스트 클라이언트 실행 (이 과정에서 TEST_OUTPUT_FILE 생성 가정)
-	$(COMPOSE) -f $(COMPOSE_FILE) run --rm test-client
-	@echo "--- ✅ 테스트 클라이언트 완료 ---"
-	@# --- 생성된 오디오 파일 재생 시작 ---
-	@if [ -f "$(TEST_OUTPUT_FILE)" ]; then \
-		echo "--- 🔊 테스트 오디오 재생 시도: $(TEST_OUTPUT_FILE) ---"; \
-		if command -v $(firstword $(PLAY_COMMAND)) > /dev/null 2>&1; then \
-			$(PLAY_COMMAND) $(TEST_OUTPUT_FILE); \
-			echo "--- ✅ 오디오 재생 완료 ---"; \
-		else \
-			echo ""; \
-			echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"; \
-			echo "! 재생 오류: 호스트 머신에 'ffplay' 명령어를 찾을 수 없습니다.         !"; \
-			echo "! 'sudo apt install ffmpeg' 또는 해당 배포판 명령어로 설치해주세요. !"; \
-			echo "! 수동 재생: $(PLAY_COMMAND) $(TEST_OUTPUT_FILE)             !"; \
-			echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"; \
-			echo ""; \
-		fi; \
-	else \
-		echo ""; \
-		echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"; \
-		echo "! 재생 오류: 테스트 오디오 파일 '$(TEST_OUTPUT_FILE)'을 찾을 수 없습니다. !"; \
-		echo "! test_tts_service.cpp 에서 파일 저장 경로를 확인하세요.            !"; \
-		echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"; \
-		echo ""; \
-	fi
+# 빌드 아티팩트 및 Docker 리소스 정리
+clean:
+	@echo "🧹 Stopping and removing services (if any)..."
+	-TARGET_ARCH=${TARGET_ARCH} docker compose -f ${COMPOSE_FILE} --env-file ${ENV_FILE} down -v --remove-orphans
+	@echo "🧹 Cleaning up local build artifacts (./build, ./build_unit_test, ./test_results)..."
+	rm -rf build
+	rm -rf ${UNIT_TEST_BUILD_DIR}
+	rm -rf test_results
+	@echo "🧹 Removing Docker images (tts-service, tts-test-external)..."
+	-docker rmi ${TTS_IMAGE_NAME}:latest ${TTS_IMAGE_NAME}:unit-test ${EXTERNAL_TEST_IMAGE_NAME}:latest
+	@echo "🧹 Pruning unused Docker data (optional, be careful)..."
+	# -docker system prune -af # 주석 처리: 사용 시 주의
+	@echo "✅ Cleanup attempt complete."
 
-# --- 상태 확인 ---
-ps:
-	$(COMPOSE) -f $(COMPOSE_FILE) ps
-
+# 실행 중인 서비스 로그 확인
 logs:
-	$(COMPOSE) -f $(COMPOSE_FILE) logs -f $(SERVICE)
+	@echo "📜 Tailing logs for services defined in ${COMPOSE_FILE}..."
+	TARGET_ARCH=${TARGET_ARCH} docker compose -f ${COMPOSE_FILE} --env-file ${ENV_FILE} logs -f --tail=100
 
-# --- 전체 시스템 정리 ---
-prune:
-	@echo "--- 🧨 전체 Docker 시스템 정리 ---"
-	@read -p "⚠️ 사용하지 않는 모든 Docker 리소스(네트워크, 빌드캐시 등)가 삭제됩니다. 계속할까요? (y/N) " c; \
-	if [ "$$c" = "y" ] || [ "$$c" = "Y" ]; then \
-		docker system prune -af --volumes; \
-		echo "--- ✅ 전체 Docker 시스템 정리 완료 ---"; \
-	else \
-		echo "⛔ 취소됨"; \
-	fi
-
-clean: down
-	rm -rf $(TEST_OUTPUT_FILE)
-	@echo "--- 🧹 테스트 오디오 파일 삭제 완료 ---"
-
-.PHONY: all build build-tts build-test up restart stop down test ps logs prune
+# 도움말 메시지
+help:
+	@echo ""
+	@echo "Makefile for TTS Service"
+	@echo "--------------------------"
+	@echo "Usage: make [target]"
+	@echo ""
+	@echo "Variables:"
+	@echo "  TARGET_ARCH      (Optional) Target architecture (e.g., x64, arm64). Default: auto-detected."
+	@echo "                     Example: make TARGET_ARCH=arm64 build"
+	@echo "  ENV_FILE         (Optional) Path to .env file. Default: ./.env"
+	@echo ""
+	@echo "Main Targets:"
+	@echo "  all                Build all required Docker images (default)."
+	@echo "  build              Alias for 'all'."
+	@echo "  build-tts          Build the main TTS service Docker image."
+	@echo "  build-external-test Build the Python external test client image."
+	@echo "  unit-test          Build (if needed) and run C++ unit tests in a Docker container."
+	@echo "  external-test      Run Python integration tests using Docker Compose."
+	@echo "  test               Alias for 'external-test'."
+	@echo ""
+	@echo "Service Management (Docker Compose):"
+	@echo "  start              Start TTS service and mock-avatar-sync in detached mode."
+	@echo "  stop               Stop and remove running services (alias for 'down')."
+	@echo "  down               Stop and remove services, networks, and volumes."
+	@echo "  logs               Tail logs from running services."
+	@echo ""
+	@echo "Cleanup:"
+	@echo "  clean              Stop services, remove build artifacts, and Docker images."
+	@echo ""
+	@echo "Other:"
+	@echo "  help               Show this help message."
+	@echo ""

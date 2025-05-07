@@ -1,0 +1,8 @@
+grpcio>=1.40.0
+grpcio-tools>=1.40.0
+protobuf>=3.18.0
+pytest>=6.0.0
+# Flask 또는 FastAPI (Mock AvatarSync 서버용)
+Flask>=2.0.0
+# 필요시 Azure SDK (Python) - 이 예제에서는 C++ 서비스 테스트이므로 불필요
+# azure-cognitiveservices-speech

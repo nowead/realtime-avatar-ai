@@ -1,0 +1,92 @@
+# Base Image: Ubuntu 22.04 LTS
+# 이 Dockerfile은 유닛 테스트 빌드 및 실행에 중점을 둡니다.
+
+# ---- Builder Stage (Unit Testing Focus) ----
+# 빌드 도구, SDK, 테스트 프레임워크 및 필수 라이브러리 설치 후 소스 코드 및 테스트 컴파일/실행
+FROM ubuntu:22.04 AS builder
+
+ARG TARGET_ARCH
+ENV TARGET_ARCH=${TARGET_ARCH}
+
+# Non-interactive apt-get
+ENV DEBIAN_FRONTEND=noninteractive
+# Speech SDK 설치 경로
+ENV SPEECHSDK_ROOT=/opt/speechsdk
+
+# 빌드 및 테스트에 필요한 패키지 설치
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    # C++ 컴파일러, CMake, PkgConfig
+    build-essential \
+    cmake \
+    pkg-config \
+    # 파일 다운로드 및 압축 해제
+    wget \
+    tar \
+    # HTTPS 통신 및 인증서
+    ca-certificates \
+    # Speech SDK 필수 빌드 의존성
+    libssl-dev \
+    libasound2-dev \
+    # gRPC 빌드 의존성
+    libprotobuf-dev \
+    protobuf-compiler \
+    libgrpc++-dev \
+    protobuf-compiler-grpc \
+    # GStreamer 빌드 의존성 (필요시 유지)
+    libgstreamer1.0-dev \
+    libgstreamer-plugins-base1.0-dev \
+    # ---=[ 수정됨: Google Test 개발 라이브러리 추가 ]=---
+    libgtest-dev \
+    # 패키지 정리
+    && update-ca-certificates \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---=[ 수정됨: Google Test 라이브러리 컴파일 및 설치 ]=---
+# /usr/src/googletest 에 설치된 소스 코드를 빌드합니다.
+RUN cd /usr/src/googletest && \
+    cmake CMakeLists.txt && \
+    make && \
+    # 컴파일된 라이브러리 파일(*.a)들을 시스템 라이브러리 경로로 복사합니다.
+    find . -name '*.a' -exec install -o root -g root -m 644 {} /usr/lib \;
+
+
+# Azure Speech SDK 다운로드 및 설치 (변경 없음)
+RUN mkdir -p $SPEECHSDK_ROOT && \
+    wget -O speechsdk.tar.gz https://aka.ms/csspeech/linuxbinary && \
+    tar -xzf speechsdk.tar.gz -C $SPEECHSDK_ROOT --strip-components=1 && \
+    rm speechsdk.tar.gz
+
+# 소스 코드 복사 (변경 없음)
+WORKDIR /app
+COPY . .
+
+# ---=[ 수정됨: 프로젝트 빌드 및 유닛 테스트 실행 ]=---
+# 1. CMakeLists.txt.test 를 사용하도록 파일 이름 변경
+# 2. CMake 및 Make 실행 (unit_tests 타겟 빌드)
+# 3. 빌드된 unit_tests 실행
+RUN \
+    # 빌드 디렉토리 생성 및 이동
+    mkdir build && cd build && \
+    echo "Running CMake with test configuration..." && \
+    cmake .. \
+      -DBUILD_TESTING=ON \
+      -DCMAKE_BUILD_TYPE=Debug \
+      -DSPEECHSDK_ROOT=${SPEECHSDK_ROOT} \
+      -DTARGET_ARCH=${TARGET_ARCH} \
+    && \
+    echo "Running make..." && \
+    make VERBOSE=1 -j$(nproc)
+
+RUN echo "Copying Speech SDK runtime libraries for ${TARGET_ARCH}..." && \
+    cp /opt/speechsdk/lib/${TARGET_ARCH}/libMicrosoft.CognitiveServices.Speech.core.so /usr/local/lib/ && \
+    cp /opt/speechsdk/lib/${TARGET_ARCH}/libpal_azure_c_shared_openssl3.so /usr/local/lib/ && \
+    cp /opt/speechsdk/lib/${TARGET_ARCH}/libMicrosoft.CognitiveServices.Speech.extension.audio.sys.so /usr/local/lib/ && \
+    # 필요시 다른 Speech SDK 라이브러리 추가
+    echo "Running ldconfig..." && \
+    ldconfig
+
+WORKDIR /app/build      # 테스트 실행 파일이 있는 빌드 디렉토리로 이동
+# CMD ["./unit_tests"]
+ENTRYPOINT ["/app/build/unit_tests"]

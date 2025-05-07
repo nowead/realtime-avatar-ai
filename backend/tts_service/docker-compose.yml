@@ -1,49 +1,106 @@
 services:
-  # TTS 서비스 컨테이너 정의
-  tts-service:
-    env_file:
-      - .env
+  # 1. Mock Avatar Sync Service (TTS 서비스가 오디오/비정형을 전송할 대상)
+  mock-avatar-sync:
     build:
-      context: . # Dockerfile이 있는 현재 디렉토리
-      dockerfile: Dockerfile # 서비스용 Dockerfile 이름
-    container_name: tts-service # 컨테이너 이름
-    environment:
-      # .env 파일 또는 환경 변수로부터 Azure 자격 증명 가져오기
-      AZURE_SPEECH_KEY: ${AZURE_SPEECH_KEY}
-      AZURE_SPEECH_REGION: ${AZURE_SPEECH_REGION}
-      SSL_CERT_DIR: /etc/ssl/certs
+      context: .
+      dockerfile: Dockerfile.external_test # Python 테스트 환경 Dockerfile 재활용
+      args:
+        TARGET_ARCH: ${TARGET_ARCH:-amd64} # .env 또는 환경 변수, 기본값 amd64
+    container_name: mock-avatar-sync-server
+    command: ["python", "/app/tests/mock_avatar_sync_server.py"]
     ports:
-      # 호스트와 컨테이너 포트 매핑 (외부 테스트용)
-      - "50055:50055"
-    volumes:
-      - ./src:/app/src
+      - "${MOCK_AVATAR_SYNC_GRPC_PORT:-50053}:50053" # gRPC 포트
+      - "${MOCK_AVATAR_SYNC_HTTP_PORT:-50083}:50083" # HTTP 포트 (상태 조회용)
     networks:
-      # 사용할 네트워크 지정
-      - tts-net
+      - tts_test_net
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MOCK_AVATAR_SYNC_PORT=50053    # 컨테이너 내부 gRPC 포트
+      - MOCK_AVATAR_SYNC_HTTP_PORT=50083 # 컨테이너 내부 HTTP 포트
     healthcheck:
-      test: ["CMD", "bash", "-c", "</dev/tcp/localhost/50055"]
-      interval: 2s
-      timeout: 1s
+      test: ["CMD", "curl", "-f", "http://localhost:50083/stats"]
+      interval: 10s
+      timeout: 5s
       retries: 5
+      start_period: 10s
 
-  # 테스트 클라이언트 컨테이너 정의
-  test-client:
+  # 2. TTS Service (Main Application)
+  tts-service:
     build:
-      context: . # Dockerfile.test가 있는 현재 디렉토리
-      dockerfile: Dockerfile.test # 테스트 클라이언트용 Dockerfile 이름
-    container_name: test-client
+      context: .
+      dockerfile: Dockerfile # 메인 TTS 서비스 Dockerfile
+      args:
+        TARGET_ARCH: ${TARGET_ARCH:-amd64} # Makefile에서 전달되는 TARGET_ARCH 사용
+        BUILD_TESTING_ARG: "OFF" # 일반 서비스 빌드 시 유닛 테스트 빌드 안함
+    container_name: tts-service
+    # .env 파일은 Makefile에서 docker compose 실행 시 --env-file 옵션으로 전달
+    # env_file:
+    #   - .env
+    environment:
+      # AZURE_SPEECH_KEY, AZURE_SPEECH_REGION는 --env-file 통해 주입됨
+      - AVATAR_SYNC_SERVICE_ADDRESS=mock-avatar-sync:50053 # Mock 서버의 서비스 이름과 내부 포트
+      - TTS_SERVER_ADDRESS=0.0.0.0:50052                  # 컨테이너 내부 리스닝 주소
+      - TARGET_ARCH=${TARGET_ARCH:-amd64}                 # 실행 환경에서도 TARGET_ARCH 필요시 사용
+      # LD_LIBRARY_PATH는 Dockerfile에서 설정됨
+    ports:
+      - "${TTS_SERVICE_PORT:-50052}:50052" # 외부에서 접근할 TTS 서비스 포트
     depends_on:
-      # tts-service가 시작된 후에 test-client 시작
-      tts-service:
-        condition: service_healthy
-    volumes:
-      - ./tests:/app/tests
+      mock-avatar-sync:
+        condition: service_healthy # Mock AvatarSync가 healthy 상태가 된 후 시작
     networks:
-      # tts-service와 동일한 네트워크 사용
-      - tts-net
-    # 이 서비스는 시작 시 CMD (Dockerfile.test에 정의됨)를 실행하고 종료됨
+      - tts_test_net
+    healthcheck:
+      # grpc-health-probe가 컨테이너 내부에 설치되어 있거나, 다른 gRPC 헬스체크 방식 사용
+      test: ["CMD-SHELL", "grpc_health_probe -addr=localhost:50052 -connect-timeout=2s -rpc-timeout=2s || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s # 서비스 시작 및 gRPC 서버 준비 시간 고려
+
+  # 3. Test Client (Python Integration Tests for TTS Service)
+  test-client-tts:
+    build:
+      context: .
+      dockerfile: Dockerfile.external_test # Python 테스트 환경 Dockerfile
+      args:
+        TARGET_ARCH: ${TARGET_ARCH:-amd64}
+    container_name: test-tts-client
+    # .env 파일은 Makefile에서 docker compose 실행 시 --env-file 옵션으로 전달
+    environment:
+      - TTS_SERVICE_ADDRESS=tts-service:50052 # 테스트 대상 TTS 서비스 주소
+      - MOCK_AVATAR_SYNC_HTTP_STATS_URL=http://mock-avatar-sync:50083/stats
+      - MOCK_AVATAR_SYNC_HTTP_RESET_URL=http://mock-avatar-sync:50083/reset
+      - PYTHONUNBUFFERED=1
+      # C++ 유닛 테스트에서 Azure 실제 호출 시 필요한 키/리전 (Makefile의 unit-test 타겟에서 사용)
+      # 이 값들은 docker compose up 시 --env-file 로 .env가 전달되면 자동으로 설정됨
+      - AZURE_SPEECH_KEY_TEST=${AZURE_SPEECH_KEY}
+      - AZURE_SPEECH_REGION_TEST=${AZURE_SPEECH_REGION}
+    depends_on:
+      tts-service:
+         condition: service_healthy
+      mock-avatar-sync:
+         condition: service_healthy
+    networks:
+      - tts_test_net
+    # Makefile의 external-test 타겟에서 실행 명령을 제어
+    # (예: pytest /app/tests/external_integration_test.py -v -s ...)
+    # 여기서는 컨테이너가 실행될 때 기본적으로 대기하도록 하거나, 테스트 스크립트 직접 실행
+    command: >
+      sh -c "
+        echo 'Test client for TTS service started. Waiting for test execution command from Makefile...';
+        # Makefile에서 docker compose exec test-client-tts pytest ... 와 같이 실행하거나
+        # 또는 아래처럼 직접 실행 (Makefile의 --exit-code-from 로직과 연동)
+        echo 'Running Pytest for TTS...';
+        sleep 5; # 서비스 안정화 대기
+        pytest /app/tests/external_integration_test.py -v -s --junitxml=/app/tests/report.xml || exit 1;
+        echo 'Pytest for TTS finished.';
+      "
+    volumes:
+      - ./test_results:/app/tests # 테스트 결과 리포트 저장용 (Makefile에서 활용)
 
 networks:
-  # 컨테이너 간 통신을 위한 사용자 정의 네트워크 정의
-  tts-net:
+  tts_test_net:
     driver: bridge
+
+# Makefile을 통해 TARGET_ARCH, .env 파일 등을 관리하고 docker compose 명령을 실행합니다.
+# 예: TARGET_ARCH=arm64 docker compose -f docker-compose.yml --env-file .env up
