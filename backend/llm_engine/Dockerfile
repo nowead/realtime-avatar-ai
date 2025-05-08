@@ -79,18 +79,13 @@ RUN apt-get update && \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# 필요한 공유 라이브러리 복사 (FetchContent가 빌드한 라이브러리 포함 - 필요시)
-# cpr과 nlohmann/json은 헤더 위주이거나 정적 링크될 수 있어,
-# 시스템 라이브러리(libcurl4, libssl3 등) 외에 추가 복사가 필요 없을 수 있음.
-# 만약 동적 라이브러리 이슈 발생 시, builder 스테이지의 /usr/local/lib 등에서 필요한 .so 파일 복사 및 ldconfig 실행
-# RUN ldconfig # 필요시 활성화
-
 # grpc_health_probe 설치
 RUN GRPC_HEALTH_PROBE_VERSION=v0.4.26 && \
     PROBE_ARCH="amd64" && \
     if [ "${TARGET_ARCH}" = "arm64" ]; then PROBE_ARCH="arm64"; fi && \
     wget -qO/usr/local/bin/grpc_health_probe https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-${PROBE_ARCH} && \
-    chmod +x /usr/local/bin/grpc_health_probe
+    chmod +x /usr/local/bin/grpc_health_probe && \
+    apt-get purge -y --auto-remove wget
 
 # 애플리케이션 작업 디렉토리 설정
 WORKDIR /app

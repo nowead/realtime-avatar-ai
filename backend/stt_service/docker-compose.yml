@@ -39,11 +39,11 @@ services:
     networks:
       - stt_test_net
     # Healthcheck 추가 고려 (mock-llm 준비 완료 후 stt-service 시작)
-    # healthcheck:
-    #   test: ["CMD", "grpc_health_probe", "-addr=localhost:50051"] # 예시 (grpc-health-probe 설치 필요)
-    #   interval: 5s
-    #   timeout: 3s
-    #   retries: 5
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=localhost:50051"] # 예시 (grpc-health-probe 설치 필요)
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   # 3. Test Client (Runs Python Integration Tests)
   test-client:

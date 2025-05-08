@@ -92,7 +92,8 @@ RUN GRPC_HEALTH_PROBE_VERSION=v0.4.26 && \
     PROBE_ARCH="amd64" && \
     if [ "${TARGET_ARCH}" = "arm64" ]; then PROBE_ARCH="arm64"; fi && \
     wget -qO/usr/local/bin/grpc_health_probe https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-${PROBE_ARCH} && \
-    chmod +x /usr/local/bin/grpc_health_probe
+    chmod +x /usr/local/bin/grpc_health_probe && \
+    apt-get purge -y --auto-remove wget
 
 
 # 빌더 스테이지에서 필요한 SDK 라이브러리 복사
