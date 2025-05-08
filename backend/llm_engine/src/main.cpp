@@ -106,6 +106,8 @@ int main() {
 
         // --- Setup and Start gRPC Server ---
         grpc::ServerBuilder builder;
+        grpc::EnableDefaultHealthCheckService(true);
+
         builder.AddListeningPort(llm_server_address, grpc::InsecureServerCredentials());
         builder.RegisterService(service_impl.get());
 

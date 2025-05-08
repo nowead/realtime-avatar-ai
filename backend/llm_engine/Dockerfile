@@ -73,6 +73,7 @@ RUN apt-get update && \
     # cpr/curl 런타임 의존성
     libcurl4 \
     zlib1g \
+    wget \
     # 패키지 정리
     && update-ca-certificates \
     && apt-get clean \
@@ -84,11 +85,20 @@ RUN apt-get update && \
 # 만약 동적 라이브러리 이슈 발생 시, builder 스테이지의 /usr/local/lib 등에서 필요한 .so 파일 복사 및 ldconfig 실행
 # RUN ldconfig # 필요시 활성화
 
+# grpc_health_probe 설치
+RUN GRPC_HEALTH_PROBE_VERSION=v0.4.26 && \
+    PROBE_ARCH="amd64" && \
+    if [ "${TARGET_ARCH}" = "arm64" ]; then PROBE_ARCH="arm64"; fi && \
+    wget -qO/usr/local/bin/grpc_health_probe https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-${PROBE_ARCH} && \
+    chmod +x /usr/local/bin/grpc_health_probe
+
 # 애플리케이션 작업 디렉토리 설정
 WORKDIR /app
 
 # 빌더 스테이지에서 컴파일된 실행 파일 복사
 COPY --from=builder /app/build/llm_server .
+COPY --from=builder /app/build/_deps/cpr_project-build/cpr/libcpr.so* /usr/local/lib/
+RUN ldconfig
 
 # gRPC 서비스 포트 노출 (llm_engine 기본 포트 50052 가정)
 EXPOSE 50052

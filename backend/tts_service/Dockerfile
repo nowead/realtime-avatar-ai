@@ -82,24 +82,18 @@ RUN apt-get update && \
     # uuid 런타임 라이브러리
     libuuid1 \
     # grpc_health_probe 다운로드에 필요한 curl
-    curl \
+    wget \
     && update-ca-certificates \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # grpc_health_probe 설치
 RUN GRPC_HEALTH_PROBE_VERSION=v0.4.26 && \
-    GRPC_HEALTH_PROBE_ARCH_SUFFIX=${TARGET_ARCH} && \
-    if [ "${TARGET_ARCH}" = "x64" ]; then \
-        GRPC_HEALTH_PROBE_ARCH_SUFFIX=amd64; \
-    elif [ "${TARGET_ARCH}" = "arm64" ]; then \
-        GRPC_HEALTH_PROBE_ARCH_SUFFIX=arm64; \
-    fi && \
-    echo "Downloading grpc_health_probe for linux/${GRPC_HEALTH_PROBE_ARCH_SUFFIX}" && \
-    curl -LsfO "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-${GRPC_HEALTH_PROBE_ARCH_SUFFIX}" && \
-    mv "grpc_health_probe-linux-${GRPC_HEALTH_PROBE_ARCH_SUFFIX}" /usr/local/bin/grpc_health_probe && \
-    chmod +x /usr/local/bin/grpc_health_probe && \
-    apt-get purge -y --auto-remove curl
+    PROBE_ARCH="amd64" && \
+    if [ "${TARGET_ARCH}" = "arm64" ]; then PROBE_ARCH="arm64"; fi && \
+    wget -qO/usr/local/bin/grpc_health_probe https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-${PROBE_ARCH} && \
+    chmod +x /usr/local/bin/grpc_health_probe
+
 
 # 빌더 스테이지에서 필요한 SDK 라이브러리 복사
 COPY --from=builder ${SPEECHSDK_ROOT}/lib/${TARGET_ARCH}/libMicrosoft.CognitiveServices.Speech.core.so /usr/local/lib/

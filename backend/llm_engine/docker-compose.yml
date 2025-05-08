@@ -1,20 +1,46 @@
 # llm_engine/docker-compose.yml
 services:
-  # 1. Mock TTS Service (for testing llm_engine)
+  # 1. Mock TTS Service (llm_engine이 의존하는 서비스)
   mock-tts:
     build:
       context: .
-      dockerfile: Dockerfile.external_test # Python 환경 재사용
-    container_name: mock-tts-server
-    # Mock TTS 서버 스크립트 실행
+      dockerfile: Dockerfile.external_test # Python 테스트 환경 Dockerfile 재활용
+      args:
+        TARGET_ARCH: ${TARGET_ARCH:-amd64} # .env 또는 환경 변수, 기본값 amd64
+    container_name: mock-tts-server-llm
+    # mock_tts_server.py에 HTTP 엔드포인트 (예: /stats, /reset) 추가 시 command 및 ports 수정 필요
     command: ["python", "/app/tests/mock_tts_server.py"]
     ports:
-      - "50053:50053" # Mock TTS 포트 (기본값 가정)
+      - "${MOCK_TTS_GRPC_PORT:-50053}:50053" # gRPC 포트 (llm-engine이 연결할 포트)
+      # HTTP 상태/제어 포트 추가 시 (예시: mock_tts_server.py에 HTTP 서버 구현 필요)
+      # - "${MOCK_TTS_HTTP_PORT:-50084}:50084"
     networks:
       - llm_test_net
     environment:
       - PYTHONUNBUFFERED=1
-      # Mock 서버 동작 제어용 환경 변수 추가 가능 (예: MOCK_TTS_PORT=50053)
+      - MOCK_TTS_PORT_INTERNAL=50053 # 컨테이너 내부 gRPC 포트
+      # - MOCK_TTS_HTTP_PORT_INTERNAL=50084 # 컨테이너 내부 HTTP 포트 (추가 시)
+    healthcheck:
+      # mock_tts_server.py에 HTTP /stats 엔드포인트 구현 시 아래와 같이 사용 가능
+      # test: ["CMD", "curl", "-f", "http://localhost:50084/stats"]
+      # 현재 mock_tts_server.py에는 HTTP 엔드포인트가 없으므로, gRPC health check 또는 TCP check 필요
+      # 간단한 TCP 포트 체크 예시 (컨테이너에 nc 또는 tương tự 도구 필요):
+      # test: ["CMD-SHELL", "nc -z localhost 50053 || exit 1"]
+      # 또는, mock_tts_server.py가 gRPC Health Checking Protocol을 구현하도록 수정하고 grpc_health_probe 사용
+      # 여기서는 단순화를 위해 healthcheck를 생략하거나, 스크립트 수정이 필요함을 명시합니다.
+      # --- 아래는 HTTP 엔드포인트가 있다고 가정할 경우의 예시 ---
+      # test: ["CMD", "curl", "-f", "http://localhost:${MOCK_TTS_HTTP_PORT_INTERNAL:-50084}/health"] # /health 엔드포인트 가정
+      # interval: 10s
+      # timeout: 5s
+      # retries: 5
+      # start_period: 10s
+      # --- 임시로, 서비스 시작 자체를 healthy로 간주 (실제로는 구현 필요) ---
+      test: ["CMD-SHELL", "exit 0"] # 실제 환경에서는 적절한 healthcheck 구현 권장
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
 
   # 2. LLM Engine Service (Main Application)
   llm-engine:
@@ -22,42 +48,71 @@ services:
       context: .
       dockerfile: Dockerfile # 메인 서비스용 Dockerfile
       args:
-        - TARGET_ARCH=${TARGET_ARCH}
+        TARGET_ARCH: ${TARGET_ARCH:-amd64}
     container_name: llm-engine-service
     env_file:
       - .env # .env 파일에서 환경 변수 로드 (OPENAI_API_KEY 등)
     environment:
       # Mock TTS 서비스 이름과 포트로 설정 (Docker 내부 네트워크 사용)
-      - TTS_SERVICE_ADDRESS=mock-tts:50053
+      - TTS_SERVICE_ADDRESS=mock-tts:50053 # mock-tts의 내부 gRPC 포트
       - LLM_SERVER_ADDRESS=0.0.0.0:50052 # 서비스 내부 리스닝 주소
-      # - OPENAI_MODEL=gpt-4o # .env 또는 여기서 설정 가능
+      - OPENAI_API_KEY=${OPENAI_API_KEY} # .env에서 가져오도록 명시
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
+      - TARGET_ARCH=${TARGET_ARCH:-amd64}
     ports:
-      - "50052:50052" # LLM 서비스 gRPC 포트 외부에 노출
+      - "${LLM_SERVICE_PORT:-50052}:50052" # LLM 서비스 gRPC 포트 외부에 노출
     depends_on:
-      - mock-tts # Mock TTS가 먼저 시작되도록 설정
+      mock-tts:
+        # mock-tts에 견고한 healthcheck가 구현되었다고 가정하고 service_healthy 사용
+        condition: service_healthy
     networks:
       - llm_test_net
-    # Healthcheck 추가 고려 (OpenAI 연결 가능 여부 등)
+    healthcheck:
+      # llm-engine (C++ gRPC 서버) 내부에 gRPC Health Checking Protocol 구현 필요
+      # Dockerfile에 grpc_health_probe 설치 필요
+      test: ["CMD-SHELL", "grpc_health_probe -addr=localhost:50052 -connect-timeout=2s -rpc-timeout=2s || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s # C++ 서비스 빌드 및 gRPC 서버 준비 시간 고려
 
   # 3. Test Client (Runs Python Integration Tests against llm-engine)
   test-client:
     build:
       context: .
       dockerfile: Dockerfile.external_test # Python 환경 재사용
+      args:
+        TARGET_ARCH: ${TARGET_ARCH:-amd64}
     container_name: test-llm-client
     environment:
       # 테스트 대상 LLM 서비스 주소 설정 (Docker 내부 네트워크 사용)
       - LLM_SERVICE_ADDRESS=llm-engine:50052
-      # - AUDIO_SAMPLE_PATH=/app/sample.wav # 오디오 불필요
       - PYTHONUNBUFFERED=1
+      # mock-tts에 HTTP 제어 엔드포인트 추가 시 관련 URL 환경변수 설정
+      # - MOCK_TTS_HTTP_STATS_URL=http://mock-tts:50084/stats
+      # - MOCK_TTS_HTTP_RESET_URL=http://mock-tts:50084/reset
     depends_on:
-      # llm-engine 서비스가 준비된 후 테스트 시작 (healthcheck 사용 권장)
       llm-engine:
-         condition: service_started # 또는 service_healthy (healthcheck 설정 시)
+         condition: service_healthy # llm-engine이 healthy 상태가 된 후 테스트 시작
+      mock-tts:
+         condition: service_healthy # mock-tts가 healthy 상태가 된 후 테스트 시작 (mock-tts의 healthcheck 견고성 중요)
     networks:
       - llm_test_net
-    # llm-engine 통합 테스트 스크립트 실행
-    command: ["pytest", "/app/tests/external_integration_test.py", "-v", "-s"]
+    command: >
+      sh -c "
+        echo 'Test client for LLM Engine started.';
+        echo 'Running Pytest for LLM Engine...';
+        mkdir -p /app/test_output;
+        pytest /app/tests/external_integration_test.py -v -s --junitxml=/app/test_output/llm_report.xml || exit 1;
+        echo 'Pytest for LLM Engine finished.';
+      "
+    volumes:
+      # 호스트의 ./test_results/llm 디렉토리에 테스트 결과 XML 파일 저장
+      - ./test_results/llm:/app/test_output
 
 networks:
   llm_test_net:
+    driver: bridge
+
+# Makefile 또는 스크립트를 통해 TARGET_ARCH, .env 파일 등을 관리하고 docker compose 명령을 실행합니다.
+# 예: TARGET_ARCH=arm64 docker compose -f llm_engine/docker-compose.yml --env-file llm_engine/.env up
