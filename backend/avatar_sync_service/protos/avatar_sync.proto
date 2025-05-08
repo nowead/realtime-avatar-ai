@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package avatar_sync;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto"; // 타임스탬프 사용 시
+
+service AvatarSyncService {
+  // 클라이언트 스트리밍 RPC: TTS 서비스 (클라이언트)는 오디오 및 부가 정보 스트림을 보내고,
+  // Avatar Sync 서버는 처리가 완료되면 빈 응답을 반환합니다.
+  // Avatar Sync 서버는 내부적으로 분석/처리된 결과를 프론트엔드로 전달합니다.
+  rpc SyncAvatarStream(stream AvatarSyncStreamRequest) returns (google.protobuf.Empty);
+}
+
+message AvatarSyncStreamRequest {
+  oneof request_data {
+    SyncConfig config = 1;        // 스트림 시작 시 설정 정보
+    bytes audio_chunk = 2;        // TTS로부터 받은 오디오 청크
+    VisemeData viseme_data = 3;   // (선택적) TTS에서 생성된 입술 모양 정보 (Viseme)
+    // 필요에 따라 다른 메타데이터 추가 가능
+  }
+}
+
+message SyncConfig {
+  string session_id = 1; // 세션 식별자 (TTS로부터 전달받음)
+  // 아바타 종류, 동기화 설정 등 추가 정보 포함 가능
+  // string avatar_model_id = 2;
+}
+
+// 입술 모양(Viseme) 정보를 표현하는 메시지 예시
+message VisemeData {
+  string viseme_id = 1;             // 입술 모양 식별자 (e.g., "AA", "IH", "SIL" for silence)
+  google.protobuf.Timestamp start_time = 2; // 해당 입술 모양 시작 시간 (스트림 기준 상대 시간 또는 절대 시간)
+  float duration_sec = 3;          // 해당 입술 모양 지속 시간 (초)
+}
+
+// 참고: Avatar Sync 서비스는 받은 데이터를 처리하여 최종적인 동기화 정보를
+// (gRPC가 아닐 수 있는 다른 프로토콜, 예: WebRTC DataChannel) 프론트엔드로 전달해야 합니다.

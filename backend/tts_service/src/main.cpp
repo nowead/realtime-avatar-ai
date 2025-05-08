@@ -28,10 +28,6 @@ int main() {
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
 
-    // gRPC Health Check 서비스 활성화
-    // ServerBuilder를 사용하기 전에 호출합니다.
-    grpc::EnableDefaultHealthCheckService(true);
-
     std::cout << "🚀 Starting TTS Service..." << std::endl;
 
     const char* azure_key_env = std::getenv("AZURE_SPEECH_KEY");
@@ -78,6 +74,9 @@ int main() {
 
         service_impl = std::make_unique<tts::TTSServiceImpl>(avatar_s_client, tts_engine_factory);
         std::cout << "✅ TTS service implementation created." << std::endl;
+        
+        // gRPC Health Check 서비스 활성화
+        grpc::EnableDefaultHealthCheckService(true);
 
         grpc::ServerBuilder builder;
         builder.AddListeningPort(tts_server_address, grpc::InsecureServerCredentials());

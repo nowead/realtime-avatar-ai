@@ -104,9 +104,10 @@ int main() {
         service_impl = std::make_unique<llm_engine::LLMServiceImpl>(tts_client, openai_client);
         std::cout << "✅ LLM service implementation created." << std::endl;
 
+        grpc::EnableDefaultHealthCheckService(true);
+        
         // --- Setup and Start gRPC Server ---
         grpc::ServerBuilder builder;
-        grpc::EnableDefaultHealthCheckService(true);
 
         builder.AddListeningPort(llm_server_address, grpc::InsecureServerCredentials());
         builder.RegisterService(service_impl.get());

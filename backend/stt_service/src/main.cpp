@@ -88,8 +88,9 @@ int main() {
         std::cout << "✅ STT service implementation created." << std::endl;
 
         // --- gRPC 서버 설정 및 시작 ---
-        grpc::ServerBuilder builder;
         grpc::EnableDefaultHealthCheckService(true); // Health Check 서비스 활성화
+    
+        grpc::ServerBuilder builder;
         builder.AddListeningPort(stt_server_address, grpc::InsecureServerCredentials());
         builder.RegisterService(service_impl.get()); // unique_ptr의 get() 사용
 
