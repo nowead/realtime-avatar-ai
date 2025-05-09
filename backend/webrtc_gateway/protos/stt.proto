@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package stt;
+
+import "google/protobuf/empty.proto"; // 빈 응답 사용
+// LLM 서비스의 proto 파일을 import 해야 할 수도 있습니다 (결과 전달용)
+// 만약 STT 서비스가 직접 LLM 서비스의 스트림을 호출한다면 필요합니다.
+// import "llm.proto"; // 예시 경로
+
+service STTService {
+  // 클라이언트 스트리밍 RPC: WebRTC Gateway (클라이언트)는 오디오 스트림을 보내고,
+  // STT 서버는 처리가 완료되면 빈 응답을 반환합니다.
+  // STT 서버는 내부적으로 인식된 텍스트를 LLM 서비스로 스트리밍합니다.
+  rpc RecognizeStream(stream STTStreamRequest) returns (google.protobuf.Empty);
+}
+
+message STTStreamRequest {
+  oneof request_data {
+    RecognitionConfig config = 1; // 스트림 시작 시 설정 정보
+    bytes audio_chunk = 2;        // 실제 오디오 데이터 청크
+  }
+}
+
+message RecognitionConfig {
+  string session_id = 1;  // 세션 또는 대화 식별자
+  string language = 2;    // 인식할 언어 코드 (e.g., "ko-KR")
+  // 필요에 따라 오디오 포맷 등의 추가 설정 포함 가능
+  // string audio_encoding = 3;
+  // int32 sample_rate_hertz = 4;
+}
+
+// 참고: STT 서비스는 내부적으로 LLM 서비스의 ProcessTextStream (아래 정의됨)을 호출하여
+// 인식된 텍스트 청크를 전달해야 합니다.

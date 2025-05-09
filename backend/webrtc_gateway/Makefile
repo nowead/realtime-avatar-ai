@@ -1,4 +1,4 @@
-# Makefile for avatar_sync_service
+# Makefile for webRTC_gateway
 
 # === Variables ===
 
@@ -17,38 +17,38 @@ else
 endif
 
 # Docker 이미지 및 파일 이름 설정
-AVATAR_SYNC_IMAGE_NAME := avatar-sync-service
-AVATAR_SYNC_DOCKERFILE := Dockerfile
+WEBRTC_GATEWAY_IMAGE_NAME := webrtc-gateway
+WEBRTC_GATEWAY_DOCKERFILE := Dockerfile
 
 # Docker Compose 파일 (필요한 경우)
-COMPOSE_FILE := docker-compose.yml # avatar_sync_service용 docker-compose.yml 필요
+COMPOSE_FILE := docker-compose.yml # webRTC_gateway용 docker-compose.yml 필요
 
 # .env 파일 (필요한 경우)
 ENV_FILE := .env
 
 # === Targets ===
 
-.PHONY: all build build-avatar-sync start stop down clean logs help
+.PHONY: all build build-webrtc-gateway start stop down clean logs help
 
 all: build
 	@echo "✅ Default target 'all' (build) completed."
 
 # 메인 서비스 이미지 빌드
-build: build-avatar-sync
+build: build-webrtc-gateway
 	@echo "✅ All required Docker images built successfully."
 
-# avatar_sync_service Docker 이미지 빌드
-build-avatar-sync:
-	@echo "🚀 Building Avatar Sync Service image (${AVATAR_SYNC_IMAGE_NAME}) for TARGET_ARCH: ${TARGET_ARCH}..."
+# webRTC_gateway Docker 이미지 빌드
+build-webrtc-gateway:
+	@echo "🚀 Building WebRTC Gateway image (${WEBRTC_GATEWAY_IMAGE_NAME}) for TARGET_ARCH: ${TARGET_ARCH}..."
 	docker build \
 		--build-arg TARGET_ARCH=${TARGET_ARCH} \
-		-t ${AVATAR_SYNC_IMAGE_NAME} \
-		-f ${AVATAR_SYNC_DOCKERFILE} .
+		-t ${WEBRTC_GATEWAY_IMAGE_NAME} \
+		-f ${WEBRTC_GATEWAY_DOCKERFILE} .
 
 # 서비스 시작 (detached mode) - docker-compose 사용 (필요한 경우)
 start:
-	@echo "🚀 Starting Avatar Sync service (and any dependencies) in detached mode (TARGET_ARCH: ${TARGET_ARCH})..."
-	TARGET_ARCH=${TARGET_ARCH} docker compose -f ${COMPOSE_FILE} --env-file ${ENV_FILE} up -d --build avatar-sync-service
+	@echo "🚀 Starting WebRTC Gateway service (and any dependencies) in detached mode (TARGET_ARCH: ${TARGET_ARCH})..."
+	TARGET_ARCH=${TARGET_ARCH} docker compose -f ${COMPOSE_FILE} --env-file ${ENV_FILE} up -d --build webrtc-gateway
 	@echo "✅ Services started. Use 'make logs' or 'make stop'."
 
 # 서비스 중지 및 컨테이너 제거 - docker-compose 사용 (필요한 경우)
@@ -65,8 +65,8 @@ clean:
 	-TARGET_ARCH=${TARGET_ARCH} docker compose -f ${COMPOSE_FILE} --env-file ${ENV_FILE} down -v --remove-orphans
 	@echo "🧹 Cleaning up local build artifacts (./build)..."
 	rm -rf build
-	@echo "🧹 Removing Docker images (${AVATAR_SYNC_IMAGE_NAME})..."
-	-docker rmi ${AVATAR_SYNC_IMAGE_NAME}
+	@echo "🧹 Removing Docker images (${WEBRTC_GATEWAY_IMAGE_NAME})..."
+	-docker rmi ${WEBRTC_GATEWAY_IMAGE_NAME}
 	@echo "🧹 Pruning unused Docker data (optional, be careful)..."
 	-docker system prune -af # 주석 처리: 사용 시 주의
 	@echo "✅ Cleanup attempt complete."
@@ -74,12 +74,12 @@ clean:
 # 실행 중인 서비스 로그 확인 - docker-compose 사용 (필요한 경우)
 logs:
 	@echo "📜 Tailing logs for services defined in ${COMPOSE_FILE}..."
-	TARGET_ARCH=${TARGET_ARCH} docker compose -f ${COMPOSE_FILE} --env-file ${ENV_FILE} logs -f --tail=100
+	TARGET_ARCH=${TARGET_ARCH} docker compose -f ${COMPOSE_FILE} --env-file ${ENV_FILE} logs -f --tail=100 webrtc-gateway
 
 # 도움말 메시지
 help:
 	@echo ""
-	@echo "Makefile for Avatar Sync Service"
+	@echo "Makefile for WebRTC Gateway"
 	@echo "--------------------------"
 	@echo "Usage: make [target]"
 	@echo ""
@@ -91,13 +91,13 @@ help:
 	@echo "Main Targets:"
 	@echo "  all              Build all (currently just the service)."
 	@echo "  build            Alias for 'all'."
-	@echo "  build-avatar-sync Build the Avatar Sync service Docker image."
+	@echo "  build-webrtc-gateway Build the WebRTC Gateway Docker image."
 	@echo ""
 	@echo "Service Management (Docker Compose - if applicable):"
-	@echo "  start            Start Avatar Sync service (and dependencies) in detached mode."
+	@echo "  start            Start WebRTC Gateway service (and dependencies) in detached mode."
 	@echo "  stop             Stop and remove running services (alias for 'down')."
 	@echo "  down             Stop and remove services, networks, and volumes."
-	@echo "  logs             Tail logs from running services."
+	@echo "  logs             Tail logs from running services (specifically for webrtc-gateway)."
 	@echo ""
 	@echo "Cleanup:"
 	@echo "  clean            Stop services, remove build artifacts, and Docker images."

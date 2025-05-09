@@ -1,7 +1,7 @@
 // js/webrtc.js
 const WebRTCService = {
     peerConnection: null,
-    signalingServerUrl: 'ws://your-signaling-server-url', // 시그널링 서버 주소 필요!
+    signalingServerUrl: "ws://<backend_ip_or_hostname>:8443", // 시그널링 서버 주소 필요!
     websocket: null,
     localStream: null,
     remoteAudioElement: null, // 원격 오디오 재생용
