@@ -1,0 +1,92 @@
+services:
+
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     websocket_gateway:
+  #       condition: service_healthy
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -f http://localhost:3000/ || exit 1"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+
+  websocket_gateway:
+    build:
+      context: ./websocket_gateway
+      dockerfile: Dockerfile
+    ports:
+      - "${WS_PORT:-8000}:${WS_PORT:-8000}"
+      - "50055:50055"
+    environment:
+      - WS_PORT=${WS_PORT:-8000}
+      - STT_SERVICE_ADDR=stt-service:50052
+      - LLM_SERVICE_ADDR=llm-service:50053
+      - TTS_SERVICE_ADDR=tts-service:50054
+      - GRPC_AVATAR_SYNC_ADDR=0.0.0.0:50055
+    depends_on:
+      stt-service:
+        condition: service_healthy
+      llm-service:
+        condition: service_healthy
+      tts-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "echo > /dev/tcp/localhost/${WS_PORT:-8000}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  stt-service:
+    build:
+      context: ./stt_service
+      dockerfile: Dockerfile
+      args:
+        TARGET_ARCH: ${TARGET_ARCH}
+    env_file:
+      - ./stt_service/.env
+    ports:
+      - "50052:50052"
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=:50052", "-tls=false"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  llm-service:
+    build:
+      context: ./llm_engine
+      dockerfile: Dockerfile
+    env_file:
+      - ./llm_engine/.env
+    ports:
+      - "50053:50053"
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=:50053", "-tls=false"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  tts-service:
+    build:
+      context: ./tts_service
+      dockerfile: Dockerfile
+      args:
+        TARGET_ARCH: ${TARGET_ARCH}
+    env_file:
+      - ./tts_service/.env
+    ports:
+      - "50054:50054"
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=:50054", "-tls=false"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  default:
+    driver: bridge

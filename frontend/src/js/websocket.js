@@ -10,7 +10,6 @@ export function initWebSocketConnection(url) {
 
   socket.onopen = () => {
     console.log("WebSocket connection opened.");
-    startAudioStream();
   };
 
   socket.onmessage = async (event) => {

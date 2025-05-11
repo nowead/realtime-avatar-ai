@@ -54,7 +54,7 @@ int main() {
     std::string openai_api_key = openai_key_env;
     std::string tts_service_address = tts_addr_env;
     std::string llm_server_address = (server_addr_env && !std::string(server_addr_env).empty())
-                                     ? server_addr_env : "0.0.0.0:50052"; // Default port for LLM
+                                     ? server_addr_env : "0.0.0.0:50053"; // Default port for LLM
     std::string openai_model = (openai_model_env && !std::string(openai_model_env).empty())
                                 ? openai_model_env : "gpt-4o"; // Default model
 

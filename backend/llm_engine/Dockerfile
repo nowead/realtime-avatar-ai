@@ -95,8 +95,8 @@ COPY --from=builder /app/build/llm_server .
 COPY --from=builder /app/build/_deps/cpr_project-build/cpr/libcpr.so* /usr/local/lib/
 RUN ldconfig
 
-# gRPC 서비스 포트 노출 (llm_engine 기본 포트 50052 가정)
-EXPOSE 50052
+# gRPC 서비스 포트 노출 (llm_engine 기본 포트 50053 가정)
+EXPOSE 50053
 
 # 컨테이너 시작 시 기본 명령어 (llm_server 실행)
 CMD ["./llm_server"]

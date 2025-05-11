@@ -58,12 +58,10 @@ int main() {
     std::string llm_engine_address = llm_addr_env;
     std::string stt_server_address = (server_addr_env && !std::string(server_addr_env).empty())
                                      ? server_addr_env
-                                     : "0.0.0.0:50056"; // 기본값 설정
+                                     : "0.0.0.0:50052"; // 기본값 설정
 
     std::cout << "🔧 Configuration:" << std::endl;
     std::cout << "  Azure Region: " << azure_region << std::endl;
-    // Azure Key는 로그에 남기지 않는 것이 좋습니다.
-    // std::cout << "  Azure Key: [REDACTED]" << std::endl;
     std::cout << "  LLM Engine Address: " << llm_engine_address << std::endl;
     std::cout << "  STT Service Listening Address: " << stt_server_address << std::endl;
 

@@ -1,45 +1,70 @@
 // frontend/__mocks__/babylonjs.js
-const mockMorphTarget = { influence: 0, name: 'mockTarget' };
+
 const mockMorphTargetManager = {
-  numTargets: 1,
-  getTarget: jest.fn().mockReturnValue(mockMorphTarget),
+  numTargets: 0,
+  getTarget: jest.fn().mockReturnValue({ influence: 0 }),
+  getTargetIndexByName: jest.fn().mockReturnValue(-1),
+  // 필요에 따라 더 많은 메소드/속성 추가
 };
 
-module.exports = {
-  Engine: jest.fn().mockImplementation(() => ({
-    runRenderLoop: jest.fn(),
-    resize: jest.fn(),
-  })),
-  Scene: jest.fn().mockImplementation(() => ({
-    render: jest.fn(),
-    // 필요한 Scene의 다른 메서드/프로퍼티 mock
-  })),
-  ArcRotateCamera: jest.fn().mockImplementation(() => ({
-    attachControl: jest.fn(),
-    wheelDeltaPercentage: 0.01,
-  })),
-  HemisphericLight: jest.fn(),
-  Vector3: jest.fn(),
-  SceneLoader: {
-    ImportMesh: jest.fn((_meshesNames, _rootUrl, _sceneFilename, scene, successCallback) => {
-      // 아바타 로드 시뮬레이션
-      const meshes = [{ // 실제 메쉬 구조에 맞게 mock 필요
-        name: "avatarMesh",
-        position: { y: 0 },
-        morphTargetManager: mockMorphTargetManager,
-        // 필요한 다른 메쉬 프로퍼티
-      }];
-      if (successCallback) {
-        successCallback(meshes, null, null, null);
+const mockMesh = {
+  position: { x: 0, y: 0, z: 0 },
+  rotation: { x: 0, y: 0, z: 0 },
+  morphTargetManager: mockMorphTargetManager,
+  // 필요에 따라 더 많은 메소드/속성 추가
+};
+
+const mockScene = {
+  clearColor: {},
+  debugLayer: { show: jest.fn() },
+  render: jest.fn(),
+  // 필요에 따라 더 많은 메소드/속성 추가
+};
+
+const mockEngine = {
+  runRenderLoop: jest.fn(callback => callback()),
+  resize: jest.fn(),
+  // 필요에 따라 더 많은 메소드/속성 추가
+};
+
+const mockArcRotateCamera = jest.fn().mockImplementation(() => ({
+  attachControl: jest.fn(),
+  setTarget: jest.fn(),
+  inputs: {
+    attached: {
+      pointers: {
+        angularSensibilityX: 0,
+        buttons: []
       }
-      return {
-        // ImportMesh의 반환값 mock (필요한 경우)
-      };
+    }
+  },
+  lowerRadiusLimit: 0,
+  upperRadiusLimit: 0,
+  lowerAlphaLimit: 0,
+  upperAlphaLimit: 0,
+  lowerBetaLimit: 0,
+  upperBetaLimit: 0,
+  wheelDeltaPercentage: 0,
+  // 필요에 따라 더 많은 메소드/속성 추가
+}));
+
+
+module.exports = {
+  Engine: jest.fn().mockImplementation(() => mockEngine),
+  Scene: jest.fn().mockImplementation(() => mockScene),
+  Color4: jest.fn().mockImplementation((r, g, b, a) => ({ r, g, b, a })),
+  Vector3: jest.fn().mockImplementation((x, y, z) => ({ x, y, z })),
+  ArcRotateCamera: mockArcRotateCamera,
+  HemisphericLight: jest.fn(),
+  SceneLoader: {
+    ImportMeshAsync: jest.fn().mockResolvedValue({
+      meshes: [mockMesh], // 최소한 하나의 메쉬를 반환하도록 설정
+      // 다른 필요한 속성들 (skeletons, animationGroups 등)
     }),
   },
   Scalar: {
     Clamp: jest.fn((value, min, max) => Math.min(Math.max(value, min), max)),
   },
-  // 필요한 Babylon.js의 다른 객체/함수 mock
-  MorphTargetManager: jest.fn().mockImplementation(() => mockMorphTargetManager),
+  // avatar.js 또는 다른 파일에서 BABYLON.* 으로 접근하는 모든 객체/함수를 여기에 추가
+  // 예: BABYLON.Matrix, BABYLON.Quaternion 등
 };

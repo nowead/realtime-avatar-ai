@@ -16,9 +16,9 @@ const char* ENV_WS_PORT = "WS_PORT";
 const char* ENV_METRICS_PORT = "METRICS_PORT";
 
 // Default values
-std::string STT_SERVICE_ADDR_DEFAULT = "0.0.0.0:50051";
-std::string GRPC_AVATAR_SYNC_ADDR_DEFAULT = "0.0.0.0:50052";
-int WS_PORT_DEFAULT = 8080;
+std::string STT_SERVICE_ADDR_DEFAULT = "0.0.0.0:50052";
+std::string GRPC_AVATAR_SYNC_ADDR_DEFAULT = "0.0.0.0:50055";
+int WS_PORT_DEFAULT = 8000;
 int METRICS_PORT_DEFAULT = 9090; // Can be same as WS_PORT if handled by same uWS App instance
 
 std::unique_ptr<grpc::Server> grpc_server_instance;

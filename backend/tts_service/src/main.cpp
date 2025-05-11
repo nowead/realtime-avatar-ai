@@ -50,7 +50,7 @@ int main() {
     std::string avatar_sync_service_address = avatar_sync_addr_env;
     std::string tts_server_address = (server_addr_env && !std::string(server_addr_env).empty())
                                      ? server_addr_env
-                                     : "0.0.0.0:50052";
+                                     : "0.0.0.0:50054";
 
     std::cout << "🔧 Configuration:" << std::endl;
     std::cout << "  Azure Speech Region: " << azure_speech_region << std::endl;

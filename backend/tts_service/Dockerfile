@@ -111,7 +111,7 @@ WORKDIR /app
 COPY --from=builder /app/build/tts_server .
 
 # gRPC 서비스 포트 노출 (TTS 서비스 포트)
-EXPOSE 50052
+EXPOSE 50054
 
 # 컨테이너 시작 시 기본 명령어 (tts_server 실행)
 CMD ["./tts_server"]

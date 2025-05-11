@@ -114,7 +114,7 @@ WORKDIR /app
 COPY --from=builder /app/build/stt_server .
 
 # gRPC 서비스 포트 노출
-EXPOSE 50055
+EXPOSE 50052
 
 # 컨테이너 시작 시 기본 명령어 (stt_server 실행)
 CMD ["./stt_server"]
