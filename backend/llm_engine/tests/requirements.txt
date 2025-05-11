@@ -7,10 +7,3 @@ protobuf==4.25.3
 
 # Python 테스트 프레임워크
 pytest==8.2.0
-
-# (선택 사항) Mock 서버에서 HTTP 엔드포인트 제공 시 (예: Flask) 또는 테스트 클라이언트에서 HTTP 요청 시
-# flask==3.0.3
-# requests==2.31.0
-
-# (선택 사항) JUnit XML 보고서 생성을 위해 pytest 플러그인이 필요할 수 있으나,
-# pytest 기본 기능으로 --junitxml 옵션이 제공됩니다.

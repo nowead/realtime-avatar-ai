@@ -1,22 +1,19 @@
 // llm_engine/tests/internal_unit_tests.cpp
 
 #include <gtest/gtest.h>
-#include <gmock/gmock.h> // Include Google Mock
+#include <gmock/gmock.h>
 #include <vector>
 #include <string>
 #include <memory>
 #include <cstdint>
-#include <grpcpp/create_channel.h> // grpc::CreateChannel 사용을 위해 포함
+#include <grpcpp/create_channel.h>
 
-#include "tts_client.h"      // Include the class we are testing
-#include "tts.grpc.pb.h"   // Include generated proto/gRPC headers
+#include "tts_client.h"
+#include "tts.grpc.pb.h"
 
 // 네임스페이스 사용
 using namespace llm_engine;
 
-// ===== Mock Stub 정의 (SynthesizeStream RPC Mocking) =====
-// 주의: 클라이언트 스트리밍 RPC Mocking은 복잡할 수 있습니다.
-// 여기서는 간단히 StubInterface 를 상속받는 것만 보여줍니다.
 class MockTTSStub : public tts::TTSService::StubInterface {
     public:
     MOCK_METHOD(grpc::ClientWriterInterface<tts::TTSStreamRequest>*, SynthesizeStreamRaw, (grpc::ClientContext* context, google::protobuf::Empty* response), (override));

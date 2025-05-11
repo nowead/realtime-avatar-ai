@@ -43,55 +43,45 @@ LLMEngineClient::~LLMEngineClient() {
 }
 
 // 스트림 시작 및 초기 설정 전송 (로직 수정됨)
-bool LLMEngineClient::StartStream(const std::string& session_id) {
+bool LLMEngineClient::StartStream(const llm::SessionConfig& config_from_stt) { // ★ 수정
     std::lock_guard<std::mutex> lock(stream_mutex_);
 
     if (stream_active_.load()) {
-        std::cerr << "⚠️ LLM Client: StartStream called while another stream (session ["
-                  << session_id_ << "]) is already active. Finish the previous stream first." << std::endl;
+        std::cerr << "⚠️ LLM Client: StartStream called while another stream is already active. Finish previous stream." << std::endl;
         return false;
     }
-    if (session_id.empty()) { // 세션 ID 유효성 검사 추가
-        std::cerr << "❌ LLM Client: StartStream called with empty session_id." << std::endl;
+    // config_from_stt.frontend_session_id() 또는 config_from_stt.session_id() 유효성 검사 추가 가능
+    if (config_from_stt.frontend_session_id().empty()) {
+        std::cerr << "❌ LLM Client: StartStream called with empty frontend_session_id in config." << std::endl;
         return false;
     }
 
-    session_id_ = session_id;
-    std::cout << "⏳ LLM Client: Starting stream for session [" << session_id_ << "]..." << std::endl;
+    // 내부 로깅이나 추적을 위해 세션 ID 저장 (frontend_session_id를 사용할지, config_from_stt.session_id()를 사용할지 결정)
+    session_id_ = config_from_stt.frontend_session_id(); // 예시: frontend_session_id를 내부 대표 ID로 사용
+    std::cout << "⏳ LLM Client: Starting stream for frontend_session_id [" << session_id_ << "] (LLM internal session: " << config_from_stt.session_id() << ")..." << std::endl;
 
     context_ = std::make_unique<ClientContext>();
-    // summary_response_.Clear(); // 수정됨: 제거
-
-    // Client Streaming RPC 시작 (서버 응답은 Empty 타입)
-    stream_ = stub_->ProcessTextStream(context_.get(), &server_response_); // 수정됨: 서버 응답 변수 전달
+    stream_ = stub_->ProcessTextStream(context_.get(), &server_response_);
 
     if (!stream_) {
-        std::cerr << "❌ LLM Client: Failed to initiate gRPC stream to LLM engine for session [" << session_id_ << "]." << std::endl;
+        std::cerr << "❌ LLM Client: Failed to initiate gRPC stream to LLM engine for frontend_session_id [" << session_id_ << "]." << std::endl;
         context_.reset();
         session_id_.clear();
         return false;
     }
 
-    // 수정됨: 스트림 시작 직후 SessionConfig 메시지 전송
-    std::cout << "   LLM Client: Sending initial SessionConfig for session [" << session_id_ << "]..." << std::endl;
-    llm::LLMStreamRequest config_request; // 네임스페이스 명시
-    llm::SessionConfig* config = config_request.mutable_config(); // oneof 필드 접근
-    config->set_session_id(session_id_);
+    llm::LLMStreamRequest initial_llm_request;
+    // 전달받은 SessionConfig 객체를 그대로 LLMStreamRequest의 config 필드에 설정
+    initial_llm_request.mutable_config()->CopyFrom(config_from_stt); // ★ 중요: frontend_session_id가 포함된 config 전달
 
-    if (!stream_->Write(config_request)) {
-        std::cerr << "❌ LLM Client: Failed to write initial SessionConfig for session [" << session_id_ << "]. Finishing stream." << std::endl;
-        // 쓰기 실패 시 즉시 스트림 종료 시도
-        stream_->Finish(); // 상태는 무시하고 종료만 시도
-        stream_.reset();
-        context_.reset();
-        session_id_.clear();
-        stream_active_.store(false); // 확실히 비활성 상태로
+    if (!stream_->Write(initial_llm_request)) {
+        std::cerr << "❌ LLM Client: Failed to write initial SessionConfig for frontend_session_id [" << session_id_ << "]. Finishing stream." << std::endl;
+        // ... 오류 처리 ...
         return false;
     }
 
-    // 초기 설정 전송 성공 후 활성 상태로 설정
     stream_active_.store(true);
-    std::cout << "✅ LLM Client: Stream successfully started and SessionConfig sent for session [" << session_id_ << "]." << std::endl;
+    std::cout << "✅ LLM Client: Stream successfully started and SessionConfig sent for frontend_session_id [" << session_id_ << "]." << std::endl;
     return true;
 }
 

@@ -22,7 +22,6 @@ const AudioService = {
   async initialize(sampleRate = 16000) {
     this.audioContext = new AudioContext({ sampleRate });
 
-    // 🔥 Webpack 환경에서는 public/ 디렉토리 기준 경로여야 함!
     await this.audioContext.audioWorklet.addModule('/worklets/audio-worklet-processor.js');
 
     this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });

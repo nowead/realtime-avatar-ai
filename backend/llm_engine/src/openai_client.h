@@ -4,24 +4,22 @@
 #include <functional>
 #include <memory>
 #include <vector>
-#include <nlohmann/json.hpp> // Requires nlohmann/json library
+#include <nlohmann/json.hpp>
 
 namespace llm_engine {
 
-// Callback for receiving text chunks from OpenAI stream
 using OpenAIChunkCallback = std::function<void(const std::string& chunk)>;
-// Callback for signaling the end of the OpenAI stream or an error
 using OpenAICompletionCallback = std::function<void(bool success, const std::string& error_message)>;
 
 struct ChatMessage {
-    std::string role; // "system", "user", "assistant"
+    std::string role;
     std::string content;
 };
 
 class OpenAIClient {
 public:
-    explicit OpenAIClient(const std::string& api_key, const std::string& model = "gpt-4o"); // Or get model from config
-    ~OpenAIClient() = default; // Consider cleanup if using long-lived resources
+    explicit OpenAIClient(const std::string& api_key, const std::string& model = "gpt-4o");
+    ~OpenAIClient() = default;
 
     // Deleted copy/move constructors and assignment operators
     OpenAIClient(const OpenAIClient&) = delete;

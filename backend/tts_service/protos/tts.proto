@@ -3,7 +3,6 @@ syntax = "proto3";
 package tts;
 
 import "google/protobuf/empty.proto";
-import "avatar_sync.proto";
 
 service TTSService {
   rpc SynthesizeStream(stream TTSStreamRequest) returns (google.protobuf.Empty);
@@ -17,7 +16,10 @@ message TTSStreamRequest {
 }
 
 message SynthesisConfig {
-  string session_id = 1;
+  string session_id = 1;          // TTS 서비스 내부에서 사용할 수 있는 세션 ID (선택적)
   string language_code = 2;
   string voice_name = 3;
+  string frontend_session_id = 4; // ★ 새로 추가: 프론트엔드 웹소켓 세션 ID
+  // string audio_encoding = 5;
+  // float speaking_rate = 6;
 }

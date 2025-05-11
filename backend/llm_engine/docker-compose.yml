@@ -21,20 +21,6 @@ services:
       - MOCK_TTS_PORT_INTERNAL=50053 # 컨테이너 내부 gRPC 포트
       # - MOCK_TTS_HTTP_PORT_INTERNAL=50084 # 컨테이너 내부 HTTP 포트 (추가 시)
     healthcheck:
-      # mock_tts_server.py에 HTTP /stats 엔드포인트 구현 시 아래와 같이 사용 가능
-      # test: ["CMD", "curl", "-f", "http://localhost:50084/stats"]
-      # 현재 mock_tts_server.py에는 HTTP 엔드포인트가 없으므로, gRPC health check 또는 TCP check 필요
-      # 간단한 TCP 포트 체크 예시 (컨테이너에 nc 또는 tương tự 도구 필요):
-      # test: ["CMD-SHELL", "nc -z localhost 50053 || exit 1"]
-      # 또는, mock_tts_server.py가 gRPC Health Checking Protocol을 구현하도록 수정하고 grpc_health_probe 사용
-      # 여기서는 단순화를 위해 healthcheck를 생략하거나, 스크립트 수정이 필요함을 명시합니다.
-      # --- 아래는 HTTP 엔드포인트가 있다고 가정할 경우의 예시 ---
-      # test: ["CMD", "curl", "-f", "http://localhost:${MOCK_TTS_HTTP_PORT_INTERNAL:-50084}/health"] # /health 엔드포인트 가정
-      # interval: 10s
-      # timeout: 5s
-      # retries: 5
-      # start_period: 10s
-      # --- 임시로, 서비스 시작 자체를 healthy로 간주 (실제로는 구현 필요) ---
       test: ["CMD-SHELL", "exit 0"] # 실제 환경에서는 적절한 healthcheck 구현 권장
       interval: 30s
       timeout: 10s

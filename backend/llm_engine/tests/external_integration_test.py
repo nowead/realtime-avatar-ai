@@ -83,12 +83,6 @@ def test_process_text_stream_successful(llm_stub):
         # LLM 서비스는 Empty를 반환해야 함
         assert isinstance(response, empty_pb2.Empty)
 
-        # !!! 중요 검증 !!!
-        # 이 테스트가 성공하려면, 별도로 실행 중인 'mock-tts-server' 컨테이너의 로그를 확인해야 합니다.
-        # 로그에서 "[test-session-123] Received text chunk..." 로그가 OpenAI가 생성했을 법한 내용으로
-        # 여러 번 나타나는지 확인해야 합니다.
-        # 또는 Mock TTS 서버에 '/get_session_data?id=test-session-123' 같은 HTTP 엔드포인트를 추가하여
-        # 테스트 코드에서 직접 호출하여 수신된 chunk 개수 등을 검증할 수도 있습니다.
         logging.info("TEST PASSED: ProcessTextStream successful (returned Empty).")
         logging.warning("=> VERIFICATION NEEDED: Check 'mock-tts-server' container logs for received chunks.")
         print("\nVERIFICATION NEEDED: Check 'mock-tts-server' container logs for received chunks for session 'test-session-123'.\n")
@@ -123,13 +117,3 @@ def test_process_text_stream_missing_session_id(llm_stub):
     assert e.value.code() == grpc.StatusCode.INVALID_ARGUMENT
     assert "Session ID is missing" in e.value.details() # 서버 에러 메시지 확인
     logging.info("TEST PASSED: ProcessTextStream correctly failed with missing session_id.")
-
-
-# TODO: 추가적인 테스트 케이스
-# - OpenAI API 호출 실패 시나리오 (Mock OpenAI 필요 또는 실제 키 사용 시 예외 처리 확인)
-# - TTS 서비스 연결 실패 또는 스트림 중 오류 발생 시나리오 (Mock TTS 서버에서 오류 주입 기능 필요)
-# - 매우 긴 텍스트 스트림 처리 테스트
-# - 동시 요청 처리 테스트 (여러 클라이언트 스레드 사용)
-
-# pytest 실행 시 이 파일 실행
-# 예: pytest tests/external_integration_test.py -v -s

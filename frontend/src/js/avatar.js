@@ -44,8 +44,8 @@ const AvatarService = {
         this.light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), this.scene);
         this.light.intensity = 0.7;
 
-        // Inspector 활성화 (개발 시 유용)
-        this.scene.debugLayer.show();
+        // Inspector 활성화
+        // this.scene.debugLayer.show();
 
         const modelPath = "/models/";
         const filename = "avatar.glb";

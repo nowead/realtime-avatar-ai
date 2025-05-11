@@ -72,7 +72,7 @@ WORKDIR /app
 
 COPY --from=builder /app/build/WebSocketGateway .
 
-ENV WS_PORT="3000"
+ENV WS_PORT="8000"
 ENV STT_SERVICE_ADDR="stt-service:50052"
 ENV GRPC_AVATAR_SYNC_ADDR="0.0.0.0:50055"
 

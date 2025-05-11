@@ -1,4 +1,5 @@
-#pragma once
+#pragma once // 헤더 가드 추가
+
 #include <string>
 #include <memory>
 #include <mutex>
@@ -10,14 +11,14 @@
 
 namespace tts {
 
-// 네임스페이스 명시
+// 네임스페이스 명시 (avatar_sync.proto에서 정의된 메시지 사용)
 using avatar_sync::AvatarSyncService;
 using avatar_sync::AvatarSyncStreamRequest;
-using avatar_sync::SyncConfig;
-using avatar_sync::VisemeData; // VisemeData 타입 사용
+using avatar_sync::SyncConfig; // ★ SyncConfig 사용
+using avatar_sync::VisemeData;
 using grpc::Channel;
 using grpc::ClientContext;
-using grpc::ClientWriter;
+using grpc::ClientWriter; // ClientWriterInterface 대신 ClientWriter 사용 (일반적)
 using grpc::Status;
 
 class AvatarSyncClient {
@@ -31,14 +32,15 @@ public:
     AvatarSyncClient& operator=(AvatarSyncClient&&) = default;
 
     // Avatar Sync 서비스로 스트림 시작 및 초기 설정(SyncConfig) 전송
-    bool StartStream(const std::string& session_id);
+    // ★ 인자를 const avatar_sync::SyncConfig& config 로 변경
+    bool StartStream(const avatar_sync::SyncConfig& config);
 
     // 생성된 오디오 청크를 Avatar Sync 서비스로 전송
     bool SendAudioChunk(const std::vector<uint8_t>& audio_chunk);
 
-    // (선택적) 생성된 비정형 데이터(VisemeData)를 Avatar Sync 서비스로 전송
-    bool SendVisemeData(const VisemeData& viseme_data); // 단일 VisemeData 전송
-    bool SendVisemeDataBatch(const std::vector<VisemeData>& visemes); // 여러 VisemeData 일괄 전송
+    // 생성된 비정형 데이터(VisemeData)를 Avatar Sync 서비스로 전송
+    bool SendVisemeData(const VisemeData& viseme_data);
+    bool SendVisemeDataBatch(const std::vector<VisemeData>& visemes);
 
     // 스트림 종료 및 최종 상태 수신
     Status FinishStream();
@@ -48,18 +50,17 @@ public:
 
 private:
     std::string server_address_;
-    std::string session_id_; // 현재 활성화된 스트림의 세션 ID
+    std::string current_frontend_session_id_; // 현재 활성화된 스트림의 프론트엔드 세션 ID 저장용
 
     std::shared_ptr<Channel> channel_;
     std::unique_ptr<AvatarSyncService::Stub> stub_;
 
-    // 스트리밍 RPC를 위한 멤버 변수
     std::unique_ptr<ClientContext> context_;
     std::unique_ptr<ClientWriter<AvatarSyncStreamRequest>> stream_;
-    google::protobuf::Empty server_response_; // AvatarSync 서버의 응답은 Empty
+    google::protobuf::Empty server_response_;
 
-    mutable std::mutex stream_mutex_;       // 스트림 관련 멤버 접근 보호
-    std::atomic<bool> stream_active_{false}; // 스트림 활성 상태 플래그
+    mutable std::mutex stream_mutex_;
+    std::atomic<bool> stream_active_{false};
 };
 
 } // namespace tts

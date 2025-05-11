@@ -25,12 +25,8 @@ export class SileroVAD {
       floatData[i] = pcmChunk[i] / 32768;
     }
 
-    // input: [1, N]
     const input = new ort.Tensor('float32', floatData, [1, pcmChunk.length]);
     const sr = new ort.Tensor('int64', new BigInt64Array([BigInt(this.sampleRate)]), []);
-
-    console.log('[DEBUG] input shape:', input.dims);
-    console.log('[DEBUG] state shape:', this.hidden?.dims);
 
     const feeds = {
       input: input,
@@ -39,7 +35,7 @@ export class SileroVAD {
     };
 
     const results = await this.session.run(feeds);
-    console.log('[DEBUG] result keys:', Object.keys(results));
+    // console.log('[DEBUG] result keys:', Object.keys(results));
 
     const speechProb = results.output?.data?.[0] ?? 0.0;
 
