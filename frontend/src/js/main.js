@@ -1,98 +1,71 @@
-// js/main.js
-document.addEventListener('DOMContentLoaded', () => {
-    const canvas = document.getElementById('renderCanvas');
-    const startButton = document.getElementById('startButton');
-    const stopButton = document.getElementById('stopButton');
-    const statusDiv = document.getElementById('status');
+// main.js
 
-    let isSessionActive = false;
+import '../css/style.css';
+import { initWebSocketConnection, closeWebSocket } from './websocket.js';
+import { AudioService, mergeChunks } from './audio.js';
+import { SileroVAD } from './sileroVadRunner.js';
+import { AvatarService } from './avatar.js'; // ✅ 아바타 초기화
 
-    // 1. 아바타 서비스 초기화
-    AvatarService.initialize(canvas);
-    setStatus('Initialized. Ready to start.');
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const statusEl = document.getElementById('status');
+const canvasElement = document.getElementById('renderCanvas');
 
-    // 시작 버튼 클릭
-    startButton.addEventListener('click', async () => {
-        if (isSessionActive) return;
-        isSessionActive = true;
-        startButton.disabled = true;
-        stopButton.disabled = false;
-        setStatus('Starting session...');
+let vad;
+let activeBuffer = [];
+let silenceFrames = 0;
+let isSpeaking = false;
 
-        try {
-            // 2. 오디오 서비스 초기화 및 마이크 시작
-            await AudioService.initialize();
-            const micStream = await AudioService.startMicrophone();
-            const audioContext = AudioService.getAudioContext();
-            const micSourceNode = AudioService.micSource; // AudioNode 가져오기
+// ✅ 페이지 로드 시 즉시 아바타 초기화
+AvatarService.initialize(canvasElement);
 
-            // 3. WebRTC 서비스 초기화 및 연결
-            WebRTCService.initialize(
-                (remoteStream) => { // 원격 오디오 트랙 수신 시
-                    setStatus('Receiving remote audio...');
-                    // 오디오 재생은 WebRTCService 내부에서 처리
-                },
-                (data) => { // 데이터 채널 메시지 수신 시 (립싱크)
-                    // console.log("Received data:", data);
-                    if (data.type === 'lipsync') {
-                        AvatarService.updateLipSync(data);
-                    }
-                     // 다른 타입의 데이터 메시지 처리
-                }
-            );
-            await WebRTCService.connect(micStream); // 시그널링 및 WebRTC 연결 시작
+startBtn.addEventListener('click', async () => {
+  startBtn.disabled = true;
+  stopBtn.disabled = false;
+  statusEl.textContent = '🔄 연결 중...';
 
-             // 4. VAD 서비스 초기화 및 시작 (WebRTC 연결 후 또는 병렬 처리)
-             // VAD 콜백 정의
-             const handleVoiceStart = () => {
-                 setStatus('Speaking detected...');
-                 // WebRTCService.setAudioEnabled(true); // 오디오 트랙 활성화 또는 VAD 상태 전송
-             };
-             const handleVoiceEnd = () => {
-                 setStatus('Silence detected...');
-                  // WebRTCService.setAudioEnabled(false); // 오디오 트랙 비활성화 또는 VAD 상태 전송
-             };
-             // VAD 초기화 및 마이크 노드 연결
-            await VadService.initialize(audioContext, handleVoiceStart, handleVoiceEnd);
-            VadService.startProcessing(micSourceNode);
+  initWebSocketConnection('wss://your.websocket.gateway/ws');
 
-            setStatus('Session started. Listening...');
-             // 초기 Offer 생성 (만약 클라이언트가 Offer를 보내는 역할이라면)
-            WebRTCService.createOffer();
+  vad = new SileroVAD('/models/silero_vad.onnx');
+  await vad.loadModel();
 
+  AudioService.onVADFrame = async (int16Chunk) => {
+    const isSpeech = await vad.detect(int16Chunk);
+    statusEl.textContent = isSpeech ? '🟢 말하는 중...' : '🔈 듣는 중...';
 
-        } catch (error) {
-            console.error("Failed to start session:", error);
-            setStatus(`Error: ${error.message}`);
-            await stopSession(); // 오류 발생 시 세션 정리
+    if (isSpeech) {
+      if (!isSpeaking) {
+        isSpeaking = true;
+        silenceFrames = 0;
+        activeBuffer = [];
+      }
+      activeBuffer.push(int16Chunk);
+    } else if (isSpeaking) {
+      silenceFrames++;
+      if (silenceFrames < 6) {
+        activeBuffer.push(int16Chunk);
+      } else {
+        isSpeaking = false;
+        if (activeBuffer.length >= 3) {
+          const merged = mergeChunks(activeBuffer);
+          console.log(`📤 Sending ${activeBuffer.length} chunks`);
+          sendAudioChunk(merged); // 직접 구현 필요
         }
-    });
-
-    // 중지 버튼 클릭
-    stopButton.addEventListener('click', async () => {
-        await stopSession();
-    });
-
-    // 세션 중지 함수
-    async function stopSession() {
-        if (!isSessionActive) return;
-        setStatus('Stopping session...');
-        VadService.stopProcessing();
-        WebRTCService.closeConnection();
-        AudioService.stopMicrophone();
-
-        isSessionActive = false;
-        startButton.disabled = false;
-        stopButton.disabled = true;
-        setStatus('Session stopped. Idle.');
-        // 아바타 입 모양 초기화 (선택 사항)
-        AvatarService.updateLipSync({ type: 'lipsync', blendshapes: {} });
+        activeBuffer = [];
+        silenceFrames = 0;
+      }
     }
+  };
 
-    // 상태 업데이트 함수
-    function setStatus(message) {
-        console.log(`Status: ${message}`);
-        statusDiv.textContent = `Status: ${message}`;
-    }
+  await AudioService.initialize();
+  statusEl.textContent = '🟢 활성화됨';
+});
 
+stopBtn.addEventListener('click', () => {
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
+  statusEl.textContent = '⏹️ 종료됨';
+
+  AudioService.stop();
+  closeWebSocket();
 });

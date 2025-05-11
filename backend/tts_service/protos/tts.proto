@@ -6,27 +6,18 @@ import "google/protobuf/empty.proto";
 import "avatar_sync.proto";
 
 service TTSService {
-  // 클라이언트 스트리밍 RPC: LLM 서비스 (클라이언트)는 텍스트 청크 스트림을 보내고,
-  // TTS 서버는 처리가 완료되면 빈 응답을 반환합니다.
-  // TTS 서버는 내부적으로 생성된 오디오를 Avatar Sync 서비스로 스트리밍합니다.
   rpc SynthesizeStream(stream TTSStreamRequest) returns (google.protobuf.Empty);
 }
 
 message TTSStreamRequest {
   oneof request_data {
-    SynthesisConfig config = 1; // 스트림 시작 시 설정 정보
-    string text_chunk = 2;      // LLM으로부터 받은 텍스트 청크
+    SynthesisConfig config = 1;
+    string text_chunk = 2;
   }
 }
 
 message SynthesisConfig {
-  string session_id = 1;     // 세션 식별자 (LLM으로부터 전달받음)
-  string language_code = 2;  // 합성할 언어 코드 (e.g., "ko-KR")
-  string voice_name = 3;     // 사용할 음성 모델 이름
-  // 오디오 포맷, 속도, 피치 등 추가 설정 포함 가능
-  // string audio_encoding = 4; // e.g., "LINEAR16"
-  // float speaking_rate = 5;
+  string session_id = 1;
+  string language_code = 2;
+  string voice_name = 3;
 }
-
-// 참고: TTS 서비스는 내부적으로 Avatar Sync 서비스의 SyncAvatarStream (아래 정의됨)을 호출하여
-// 생성된 오디오 청크 및 비정형 데이터를 전달해야 합니다.

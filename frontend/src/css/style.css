@@ -1,9 +1,73 @@
-body { font-family: sans-serif; }
-#renderCanvas {
-    width: 80%;
-    height: 60vh;
-    border: 1px solid black;
-    touch-action: none; /* 모바일 터치 이벤트 처리 */
+/* 전체 페이지 스타일 */
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: url('background.jpg') no-repeat center center fixed;
+  background-size: cover;
+  font-family: 'Segoe UI', sans-serif;
 }
-button { margin: 5px; padding: 10px; }
-#status { margin-top: 10px; font-weight: bold; }
+
+/* Babylon 캔버스 전체화면 */
+canvas#renderCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+  z-index: 0; /* 가장 아래 */
+  background: transparent;
+}
+
+/* 앱 UI 컨테이너 */
+#app {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10; /* 캔버스 위에 배치 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background-color: rgba(0, 0, 0, 0.35);
+  padding: 20px 30px;
+  border-radius: 20px;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* 버튼 스타일 */
+button {
+  width: 60px;
+  height: 60px;
+  border: none;
+  border-radius: 50%;
+  font-size: 20px;
+  color: white;
+  background: rgba(33, 150, 243, 0.4);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(4px);
+}
+
+button:hover {
+  background: rgba(25, 118, 210, 0.7);
+  transform: scale(1.1);
+}
+
+button:disabled {
+  background: rgba(100, 100, 100, 0.4);
+  cursor: not-allowed;
+}
+
+/* 상태 텍스트 */
+#status {
+  font-size: 16px;
+  color: #0f0;
+  margin-top: 6px;
+  text-shadow: 0 0 4px black;
+}

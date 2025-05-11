@@ -1,16 +1,20 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebRTC Avatar Frontend</title>
-    </head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Real-time Avatar Interaction</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
 <body>
-    <h1>WebRTC Avatar Demo</h1>
-    <canvas id="renderCanvas"></canvas>
-    <button id="startButton">Start Session</button>
-    <button id="stopButton" disabled>Stop Session</button>
-    <div id="status">Status: Idle</div>
+  <canvas id="renderCanvas"></canvas>
 
-    </body>
+  <div id="app">
+    <div id="controls">
+      <button id="startBtn">▶️</button>
+      <button id="stopBtn" disabled>⏹️</button>
+    </div>
+    <p id="status">⏳ 대기 중...</p>
+  </div>
+</body>
 </html>

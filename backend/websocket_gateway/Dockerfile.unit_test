@@ -1,0 +1,102 @@
+#------------------------------------------------------------------------------
+# 단계 1: 유닛 테스트 빌더 (Unit Test Builder Stage)
+#------------------------------------------------------------------------------
+FROM ubuntu:22.04 AS unit_test_builder
+
+LABEL stage="unit_test_builder"
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 빌드 및 테스트에 필요한 기본 의존성 설치
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        cmake \
+        git \
+        pkg-config \
+        wget \
+        ca-certificates \
+        libssl-dev \
+        zlib1g-dev \
+        libprotobuf-dev \
+        protobuf-compiler \
+        libgrpc++-dev \
+        protobuf-compiler-grpc \
+        libgtest-dev \
+        rsync \
+    && update-ca-certificates \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Google Test 소스 코드 빌드 및 설치 (libgtest-dev는 소스만 제공)
+# CMake의 find_package(GTest REQUIRED)가 이를 찾을 수 있도록 /usr/lib, /usr/include에 설치
+RUN cd /usr/src/googletest && \
+    cmake CMakeLists.txt && \
+    make && \
+    cp lib/libgtest.a /usr/lib/libgtest.a && \
+    cp lib/libgtest_main.a /usr/lib/libgtest_main.a && \
+    # 헤더는 보통 /usr/src/googletest/googletest/include/gtest 에 위치하며,
+    # find_package(GTest)가 이를 찾음. 필요시 /usr/include/gtest 로 복사 또는 심볼릭 링크.
+    # CMake 3.1+ 에서는 GTest_SOURCE_DIR, GTest_BINARY_DIR 사용하여 직접 빌드도 지원
+    # 여기서는 시스템에 설치된 것처럼 만듦.
+    rsync -av googletest/include/gtest/ /usr/include/gtest/ && \
+    rsync -av googlemock/include/gmock/ /usr/include/gmock/ # 필요한 경우 GMock도 설치
+
+WORKDIR /app_test
+
+# uWebSockets 설치 (기존 Dockerfile과 동일하게)
+RUN git clone --branch v20.40.0 --recurse-submodules \
+      https://github.com/uNetworking/uWebSockets.git external/uwebsockets && \
+    cd external/uwebsockets && \
+    make && \
+    make install PREFIX=/usr/local && \
+    cp uSockets/uSockets.a /usr/local/lib/libuSockets.a && \
+    mkdir -p /usr/local/include/uSockets && \
+    cp uSockets/src/*.h /usr/local/include/uSockets/ && \
+    cd /app_test
+
+# 소스 코드 및 CMake 파일 복사
+COPY CMakeLists.txt ./
+COPY protos/ ./protos/
+COPY src/ ./src/
+COPY tests/ ./tests/
+
+# 테스트 빌드
+RUN mkdir -p build && cd build && \
+    cmake .. \
+        -DCMAKE_BUILD_TYPE=Debug \
+        -DBUILD_TESTING=ON \
+    && make VERBOSE=1 -j$(nproc) \
+    && echo "Unit test executable should be at ./gateway_unit_tests" \
+    && ls -l ./gateway_unit_tests # 실제 파일명 확인
+
+#------------------------------------------------------------------------------
+# 단계 2: 유닛 테스트 실행기 (Unit Test Runner Stage)
+#------------------------------------------------------------------------------
+FROM ubuntu:22.04 AS unit_test_runner
+
+LABEL stage="unit_test_runner"
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 실행에 필요한 최소한의 라이브러리 설치
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libssl3 \
+        zlib1g \
+        ca-certificates \
+        libgrpc++1 \
+        libprotobuf-lite23 \
+        # GTest 라이브러리는 정적으로 링크되므로 별도 설치 불필요
+    && update-ca-certificates \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app_test
+
+# 빌드된 테스트 실행 파일 복사 (CMakeLists.txt에서 설정한 이름 사용)
+COPY --from=unit_test_builder /app_test/build/gateway_unit_tests ./gateway_unit_tests
+
+# 필요한 경우 환경 변수 설정
+# ENV LD_LIBRARY_PATH="/usr/local/lib:${LD_LIBRARY_PATH}" # uSockets가 동적 라이브러리일 경우
+
+# 테스트 실행
+CMD ["./gateway_unit_tests"]

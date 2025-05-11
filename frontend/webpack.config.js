@@ -44,7 +44,15 @@ module.exports = (env, argv) => {
             to: 'models', // 복사될 목적지 디렉토리 (dist/models)
             noErrorOnMissing: true // 원본 디렉토리 없어도 오류 발생 안 함
           },
-          // 필요시 다른 정적 파일/디렉토리 복사 규칙 추가
+          {
+            from: 'src/js/audio-worklet-processor.js',
+            to: 'worklets/audio-worklet-processor.js',
+          },
+          {
+            from: 'src/css',
+            to: 'css',
+            noErrorOnMissing: true
+          }
         ],
       }),
     ],

@@ -1,0 +1,9 @@
+.git
+.gitignore
+.vscode/
+build/
+cmake-build-*/
+*.o
+*.log
+*.user
+*.suo
